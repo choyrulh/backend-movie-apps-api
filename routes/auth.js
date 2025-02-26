@@ -104,7 +104,7 @@ router.post(
       if (!user) {
         return res.status(401).json({
           status: "error",
-          message: "Invalid credentials",
+          message: "email not found",
         });
       }
 
@@ -113,7 +113,7 @@ router.post(
       if (!isMatch) {
         return res.status(401).json({
           status: "error",
-          message: "Invalid credentials",
+          message: "password not match",
         });
       }
 
