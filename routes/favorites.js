@@ -7,11 +7,16 @@ const router = express.Router();
 // Get favorites
 router.get("/", auth, async (req, res) => {
   try {
-    const favorites = await Favorite.find({ user: req.user.userId }).sort({
-      addedAt: -1,
-    });
+    const { type } = req.query;
+    const query = { user: req.user.userId };
+
+    if (type) {
+      query.type = type;
+    }
+
+    const favorites = await Favorite.find(query).sort({ addedAt: -1 });
     res.json({
-      message: "Favorites retrieved",
+      message: "success",
       status: 200,
       length: favorites.length,
       favorites,
@@ -24,24 +29,32 @@ router.get("/", auth, async (req, res) => {
 // Add to favorites
 router.post("/", auth, async (req, res) => {
   try {
-    const { movieId, title, poster } = req.body;
+    const { itemId, type, name, imagePath } = req.body;
 
+    // Validation
+    if (!itemId || !type || !name) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    // Check if already in favorites
     const existing = await Favorite.findOne({
       user: req.user.userId,
-      movieId,
+      itemId,
+      type,
     });
 
     if (existing) {
       return res.status(400).json({
-        message: "Movie already in favorites",
+        message: "Item already in favorites",
       });
     }
 
     const favorite = new Favorite({
       user: req.user.userId,
-      movieId,
-      title,
-      poster,
+      itemId,
+      type,
+      name,
+      imagePath,
     });
 
     await favorite.save();
@@ -57,10 +70,25 @@ router.post("/", auth, async (req, res) => {
 // Remove from favorites
 router.delete("/:movieId", auth, async (req, res) => {
   try {
-    await Favorite.findOneAndDelete({
-      movieId: req.params.movieId,
+    const { itemId } = req.params;
+    const { type } = req.query;
+
+    // if (!type) {
+    //   return res
+    //     .status(400)
+    //     .json({ message: "Type query parameter is required" });
+    // }
+
+    const deleted = await Favorite.findOneAndDelete({
       user: req.user.userId,
+      itemId,
+      type,
     });
+
+    if (!deleted) {
+      return res.status(404).json({ message: "Favorite not found" });
+    }
+
     res.json({ message: "Removed from favorites" });
   } catch (error) {
     res.status(500).json({ message: "Server error" });

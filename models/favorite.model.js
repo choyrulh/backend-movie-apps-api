@@ -6,15 +6,28 @@ const favoriteSchema = new mongoose.Schema({
     ref: "User",
     required: true,
   },
-  movieId: {
+  itemId: {
+    type: Number, // Menggunakan Number untuk kompatibilitas ID TMDB
+    required: true,
+  },
+  type: {
     type: String,
+    enum: ["movie", "tv", "person"],
     required: true,
   },
   title: {
     type: String,
-    required: true,
+    required: function () {
+      return this.type === "movie" || this.type === "tv";
+    },
   },
-  poster: String,
+  name: {
+    type: String,
+    required: function () {
+      return this.type === "person";
+    },
+  },
+  imagePath: String,
   addedAt: {
     type: Date,
     default: Date.now,

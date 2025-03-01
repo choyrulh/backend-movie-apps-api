@@ -2,6 +2,7 @@ const router = require("express").Router();
 const authMiddleware = require("../middleware/auth"); // Tambahkan ini
 const RecentlyWatched = require("../models/RecentlyWatched");
 const auth = require("../middleware/auth.middleware");
+const mongoose = require("mongoose");
 
 // Tambahkan middleware auth untuk semua route
 // router.use(authMiddleware);
@@ -73,7 +74,7 @@ const auth = require("../middleware/auth.middleware");
 router.get("/", auth, async (req, res) => {
   try {
     const history = await RecentlyWatched.find({ user: req.user.userId }).sort({
-      watchedAt: -1,
+      watchedAt: -1, // Urutkan dari yang terakhir ditonton
     });
     res.json({
       message: "Watch history retrieved",
@@ -89,15 +90,25 @@ router.get("/", auth, async (req, res) => {
 // Add to watch history
 router.post("/", auth, async (req, res) => {
   try {
-    const { movieId, title, poster, duration, progress } = req.body;
+    const {
+      movieId,
+      title,
+      poster,
+      duration,
+      progressPercentage,
+      totalDuration,
+      genres,
+    } = req.body;
 
     const watchEntry = new RecentlyWatched({
       user: req.user.userId,
       movieId,
       title,
       poster,
-      duration,
-      progress,
+      durationWatched: duration, // durationWatched
+      totalDuration,
+      progressPercentage,
+      genres,
     });
 
     await watchEntry.save();
@@ -132,6 +143,132 @@ router.delete("/", auth, async (req, res) => {
   } catch (error) {
     res.status(500).json({ message: "Server error" });
   }
+});
+
+// Get total waktu menonton
+router.get("/watch-time", auth, async (req, res) => {
+  try {
+    const userId = new mongoose.Types.ObjectId(req.user.userId);
+    const { period } = req.query; // "week" atau "month"
+    const now = new Date();
+    let startDate;
+
+    if (period === "week") {
+      startDate = new Date();
+      startDate.setDate(now.getDate() - 7); // 7 hari terakhir
+    } else if (period === "month") {
+      startDate = new Date();
+      startDate.setMonth(now.getMonth() - 1); // 1 bulan terakhir
+    }
+
+    // ✅ Total jumlah film yang ditonton
+    const totalWatched = await WatchHistory.countDocuments({ user: userId });
+
+    // ✅ Total waktu menonton dalam menit
+    const totalDuration = await WatchHistory.aggregate([
+      { $match: { user: userId } },
+      { $group: { _id: null, total: { $sum: "$durationWatched" } } },
+    ]);
+
+    // ✅ Mendapatkan genre terbaru yang paling sering ditonton
+    const recentGenres = await WatchHistory.aggregate([
+      { $match: { user: userId } },
+      { $sort: { watchedDate: -1 } },
+      { $limit: 10 },
+      { $unwind: "$genres" },
+      {
+        $group: {
+          _id: "$genres",
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { count: -1 } },
+      { $project: { _id: 0, genre: "$_id", count: 1 } },
+    ]);
+
+    // ✅ Hitung total durasi tontonan berdasarkan period
+    let watchHistoryByPeriod = [];
+    if (period === "week") {
+      // Per hari dalam 7 hari terakhir
+      watchHistoryByPeriod = await WatchHistory.aggregate([
+        { $match: { user: userId, watchedDate: { $gte: startDate } } },
+        { $addFields: { watchedDate: { $toDate: "$watchedDate" } } },
+        {
+          $group: {
+            _id: {
+              $dateToString: { format: "%Y-%m-%d", date: "$watchedDate" },
+            },
+            totalDuration: { $sum: "$durationWatched" },
+          },
+        },
+        { $sort: { _id: -1 } },
+        { $project: { _id: 0, date: "$_id", totalDuration: 1 } },
+      ]);
+    } else if (period === "month") {
+      // Per minggu dalam 1 bulan terakhir
+      watchHistoryByPeriod = await WatchHistory.aggregate([
+        { $match: { user: userId, watchedDate: { $gte: startDate } } },
+        { $addFields: { watchedDate: { $toDate: "$watchedDate" } } },
+        {
+          $group: {
+            _id: {
+              week: { $isoWeek: "$watchedDate" }, // Ambil nomor minggu
+              year: { $year: "$watchedDate" }, // Ambil tahun
+            },
+            totalDuration: { $sum: "$durationWatched" },
+          },
+        },
+        { $sort: { "_id.year": -1, "_id.week": -1 } },
+        {
+          $project: {
+            _id: 0,
+            week: "$_id.week",
+            year: "$_id.year",
+            totalDuration: 1,
+          },
+        },
+      ]);
+    }
+
+    res.json({
+      totalMinutes: watchTime[0]?.total || 0,
+      completedCount: completedContent[0]?.completedCount || 0,
+      period: period || "all-time",
+    });
+  } catch (error) {
+    console.error("Error in /watch-time:", error);
+    res.status(500).json({
+      status: "error",
+      message: "Internal server error",
+    });
+  }
+});
+
+router.get("/progress/:movieId", auth, async (req, res) => {
+  const progress = await RecentlyWatched.aggregate([
+    {
+      $match: {
+        user: new mongoose.Types.ObjectId(req.user.userId),
+        movieId: Number(req.params.movieId),
+      },
+    },
+    {
+      $group: {
+        _id: "$movieId",
+        totalWatched: { $sum: "$durationWatched" },
+        totalDuration: { $first: "$totalDuration" },
+      },
+    },
+  ]);
+
+  const result = progress[0] || { totalWatched: 0, totalDuration: 0 };
+  res.json({
+    movieId: Number(req.params.movieId),
+    userId: req.user.userId,
+    totalWatched: result.totalWatched,
+    progress: (result.totalWatched / result.totalDuration) * 100,
+    isCompleted: result.totalWatched >= result.totalDuration,
+  });
 });
 
 module.exports = router;

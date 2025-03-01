@@ -66,6 +66,7 @@ router.post(
 
       res.status(201).json({
         status: "success",
+        message: "User successfully created",
         data: {
           user: {
             _id: user._id,
@@ -99,6 +100,13 @@ router.post(
     try {
       const { email, password } = req.body;
 
+      if (!email || !password) {
+        return res.status(400).json({
+          status: "error",
+          message: "Please provide email and password",
+        });
+      }
+
       // Cek user exists
       const user = await User.findOne({ email });
       if (!user) {
@@ -125,6 +133,7 @@ router.post(
 
       res.json({
         status: "success",
+        message: "Login success",
         token,
         data: {
           user: {
