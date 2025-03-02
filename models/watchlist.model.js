@@ -14,7 +14,7 @@ const watchlistSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
-  poster_path: String,
+  poster: String,
   addedAt: {
     type: Date,
     default: Date.now,
