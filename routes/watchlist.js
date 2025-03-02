@@ -32,6 +32,7 @@ router.post("/", auth, async (req, res) => {
       release_date,
       backdrop_path,
       vote_average,
+      genres,
     } = req.body;
 
     const existing = await Watchlist.findOne({
@@ -54,6 +55,7 @@ router.post("/", auth, async (req, res) => {
       release_date,
       backdrop_path,
       vote_average,
+      genres,
     });
 
     await watchlistItem.save();
