@@ -24,7 +24,7 @@ router.get("/", auth, async (req, res) => {
 // Add to watchlist
 router.post("/", auth, async (req, res) => {
   try {
-    const { movieId, title, poster, type } = req.body;
+    const { movieId, title, poster, type, release_date } = req.body;
 
     const existing = await Watchlist.findOne({
       user: req.user.userId,
@@ -43,6 +43,7 @@ router.post("/", auth, async (req, res) => {
       title,
       poster,
       type,
+      release_date,
     });
 
     await watchlistItem.save();
@@ -64,7 +65,10 @@ router.delete("/:movieId", auth, async (req, res) => {
     });
     res.json({ message: "Removed from watchlist" });
   } catch (error) {
-    res.status(500).json({ message: "Server error" });
+    res.json({
+      status: 500,
+      message: "Server error",
+    });
   }
 });
 

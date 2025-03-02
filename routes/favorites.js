@@ -22,14 +22,25 @@ router.get("/", auth, async (req, res) => {
       favorites,
     });
   } catch (error) {
-    res.status(500).json({ message: "Server error" });
+    res.json({
+      message: "Internal server error",
+      status: 500,
+    });
   }
 });
 
 // Add to favorites
 router.post("/", auth, async (req, res) => {
   try {
-    const { itemId, type, name, imagePath } = req.body;
+    const {
+      itemId,
+      type,
+      name,
+      poster_path,
+      backdrop_path,
+      vote_average,
+      release_date,
+    } = req.body;
 
     // Validation
     if (!itemId || !type || !name) {
@@ -54,7 +65,10 @@ router.post("/", auth, async (req, res) => {
       itemId,
       type,
       name,
-      imagePath,
+      poster_path,
+      backdrop_path,
+      vote_average,
+      release_date,
     });
 
     await favorite.save();

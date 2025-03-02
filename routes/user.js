@@ -46,7 +46,3 @@ router.put("/profile", auth, async (req, res) => {
 });
 
 module.exports = router;
-
-// Similar endpoints for watchlist...
-
-module.exports = router;
