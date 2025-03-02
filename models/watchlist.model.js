@@ -28,6 +28,7 @@ const watchlistSchema = new mongoose.Schema({
     required: true,
   },
   backdrop_path: String,
+  vote_average: String,
 });
 
 module.exports = mongoose.model("Watchlist", watchlistSchema);
