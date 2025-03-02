@@ -14,7 +14,7 @@ const watchlistSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
-  poster: String,
+  poster_path: String,
   addedAt: {
     type: Date,
     default: Date.now,
@@ -23,6 +23,11 @@ const watchlistSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  release_date: {
+    type: String,
+    required: true,
+  },
+  backdrop_path: String,
 });
 
 module.exports = mongoose.model("Watchlist", watchlistSchema);

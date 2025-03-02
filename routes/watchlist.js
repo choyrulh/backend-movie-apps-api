@@ -24,7 +24,8 @@ router.get("/", auth, async (req, res) => {
 // Add to watchlist
 router.post("/", auth, async (req, res) => {
   try {
-    const { movieId, title, poster, type, release_date } = req.body;
+    const { movieId, title, poster, type, release_date, backdrop_path } =
+      req.body;
 
     const existing = await Watchlist.findOne({
       user: req.user.userId,
@@ -44,6 +45,7 @@ router.post("/", auth, async (req, res) => {
       poster,
       type,
       release_date,
+      backdrop_path,
     });
 
     await watchlistItem.save();
