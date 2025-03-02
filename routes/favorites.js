@@ -37,9 +37,11 @@ router.post("/", auth, async (req, res) => {
       type,
       name,
       poster_path,
+      release_date,
+
       backdrop_path,
       vote_average,
-      release_date,
+      genres,
     } = req.body;
 
     // Validation
@@ -69,6 +71,7 @@ router.post("/", auth, async (req, res) => {
       backdrop_path,
       vote_average,
       release_date,
+      genres,
     });
 
     await favorite.save();

@@ -32,6 +32,18 @@ const favoriteSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+  release_date: {
+    type: String,
+    required: true,
+  },
+  backdrop_path: String,
+  vote_average: String,
+  genres: [
+    {
+      id: { type: Number, required: true },
+      name: { type: String, required: true },
+    },
+  ],
 });
 
 module.exports = mongoose.model("Favorite", favoriteSchema);

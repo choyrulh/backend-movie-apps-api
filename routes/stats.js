@@ -13,27 +13,52 @@ router.get("/", auth, async (req, res) => {
     const now = new Date();
     let startDate;
 
-    // ✅ Filter tanggal berdasarkan tipe
     if (type === "week") {
       startDate = new Date();
-      startDate.setDate(now.getDate() - 6); // Ambil 7 hari terakhir (termasuk hari ini)
+      startDate.setDate(now.getDate() - 6);
     } else if (type === "month") {
       startDate = new Date();
-      startDate.setMonth(now.getMonth() - 1); // Ambil 1 bulan terakhir
+      startDate.setMonth(now.getMonth() - 1);
     } else {
-      return res.status(400).json({ status: "error", message: "Invalid type" });
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid type parameter. Use 'week' or 'month'",
+      });
     }
 
-    // ✅ Total jumlah film yang ditonton
-    const totalWatched = await WatchHistory.countDocuments({ user: userId });
+    // Total film ditonton dan yang selesai (>=90%)
+    const [totalWatched, totalCompleted] = await Promise.all([
+      WatchHistory.countDocuments({ user: userId }),
+      WatchHistory.countDocuments({
+        user: userId,
+        $expr: {
+          $gte: ["$durationWatched", { $multiply: ["$duration", 0.9] }],
+        },
+      }),
+    ]);
 
-    // ✅ Total waktu menonton dalam menit
-    const totalDuration = await WatchHistory.aggregate([
+    // Total durasi menonton dalam menit
+    const totalDurationResult = await WatchHistory.aggregate([
       { $match: { user: userId } },
       { $group: { _id: null, total: { $sum: "$durationWatched" } } },
     ]);
 
-    // ✅ Mendapatkan genre terbaru yang paling sering ditonton
+    // Genre paling sering dari semua tontonan
+    const mostWatchedGenres = await WatchHistory.aggregate([
+      { $match: { user: userId } },
+      { $unwind: "$genres" },
+      {
+        $group: {
+          _id: "$genres",
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { count: -1 } },
+      { $limit: 5 },
+      { $project: { _id: 0, genre: "$_id", count: 1 } },
+    ]);
+
+    // Genre dari 10 tontonan terakhir
     const recentGenres = await WatchHistory.aggregate([
       { $match: { user: userId } },
       { $sort: { watchedDate: -1 } },
@@ -49,27 +74,45 @@ router.get("/", auth, async (req, res) => {
       { $project: { _id: 0, genre: "$_id", count: 1 } },
     ]);
 
+    // Statistik berdasarkan periode
     let watchHistoryByPeriod = [];
-
-    if (type === "week") {
-      // ✅ Statistik per hari dalam 7 hari terakhir
-      watchHistoryByPeriod = await WatchHistory.aggregate([
-        { $match: { user: userId, watchedDate: { $gte: startDate } } },
+    const periodPipeline = {
+      week: [
         {
           $group: {
             _id: {
               $dateToString: { format: "%Y-%m-%d", date: "$watchedDate" },
             },
             totalDuration: { $sum: "$durationWatched" },
+            totalMovies: { $sum: 1 },
+            totalCompleted: {
+              $sum: {
+                $cond: [
+                  {
+                    $gte: [
+                      "$durationWatched",
+                      { $multiply: ["$duration", 0.9] },
+                    ],
+                  },
+                  1,
+                  0,
+                ],
+              },
+            },
           },
         },
-        { $sort: { _id: 1 } }, // Urutkan dari tanggal lama ke terbaru
-        { $project: { _id: 0, date: "$_id", totalDuration: 1 } },
-      ]);
-    } else if (type === "month") {
-      // ✅ Statistik per minggu dalam 1 bulan terakhir
-      watchHistoryByPeriod = await WatchHistory.aggregate([
-        { $match: { user: userId, watchedDate: { $gte: startDate } } },
+        { $sort: { _id: 1 } },
+        {
+          $project: {
+            _id: 0,
+            date: "$_id",
+            totalDuration: 1,
+            totalMovies: 1,
+            totalCompleted: 1,
+          },
+        },
+      ],
+      month: [
         {
           $group: {
             _id: {
@@ -77,17 +120,41 @@ router.get("/", auth, async (req, res) => {
               week: { $isoWeek: "$watchedDate" },
             },
             totalDuration: { $sum: "$durationWatched" },
+            totalMovies: { $sum: 1 },
+            totalCompleted: {
+              $sum: {
+                $cond: [
+                  {
+                    $gte: [
+                      "$durationWatched",
+                      { $multiply: ["$duration", 0.9] },
+                    ],
+                  },
+                  1,
+                  0,
+                ],
+              },
+            },
           },
         },
-        { $sort: { "_id.year": 1, "_id.week": 1 } }, // Urutkan dari minggu lama ke terbaru
+        { $sort: { "_id.year": 1, "_id.week": 1 } },
         {
           $project: {
             _id: 0,
             year: "$_id.year",
             week: "$_id.week",
             totalDuration: 1,
+            totalMovies: 1,
+            totalCompleted: 1,
           },
         },
+      ],
+    };
+
+    if (type) {
+      watchHistoryByPeriod = await WatchHistory.aggregate([
+        { $match: { user: userId, watchedDate: { $gte: startDate } } },
+        ...periodPipeline[type],
       ]);
     }
 
@@ -96,9 +163,18 @@ router.get("/", auth, async (req, res) => {
       message: "Watch statistics retrieved successfully",
       data: {
         totalMoviesWatched: totalWatched,
-        totalWatchTime: totalDuration[0]?.total || 0,
+        totalCompletedMovies: totalCompleted,
+        totalWatchTime: totalDurationResult[0]?.total || 0,
+        mostWatchedGenres,
         recentActivity: recentGenres,
-        watchHistoryByPeriod, // ⬅️ Data sesuai periode
+        watchHistoryByPeriod: watchHistoryByPeriod.map((period) => ({
+          ...period,
+          // Tambah persentase komplet untuk FE
+          completionRate:
+            period.totalMovies > 0
+              ? Math.round((period.totalCompleted / period.totalMovies) * 100)
+              : 0,
+        })),
       },
     });
   } catch (error) {
