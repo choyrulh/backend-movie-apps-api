@@ -36,12 +36,12 @@ router.post("/", auth, async (req, res) => {
       itemId,
       type,
       name,
-      poster_path,
+      imagePath,
       release_date,
-
       backdrop_path,
       vote_average,
       genres,
+      title,
     } = req.body;
 
     // Validation
@@ -67,11 +67,12 @@ router.post("/", auth, async (req, res) => {
       itemId,
       type,
       name,
-      poster_path,
+      imagePath,
       backdrop_path,
       vote_average,
       release_date,
       genres,
+      title,
     });
 
     await favorite.save();
