@@ -26,23 +26,34 @@ const createToken = (userId) => {
   });
 };
 
+// Helper untuk mengirim response error
+const sendErrorResponse = (res, statusCode, message) => {
+  return res.status(statusCode).json({
+    status: "error",
+    message: message,
+  });
+};
+
 // Register dengan validasi
 router.post(
   "/register",
   [
-    body("name").trim().notEmpty().withMessage("Name is required"),
+    body("name").trim().notEmpty().withMessage("Name is required").escape(),
     body("email").isEmail().withMessage("Invalid email").normalizeEmail(),
     body("password")
       .isLength({ min: 6 })
-      .withMessage("Password must be at least 6 characters"),
+      .withMessage("Password must be at least 6 characters")
+      .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).*$/)
+      .withMessage("Password harus mengandung huruf besar, kecil, dan angka"),
   ],
   async (req, res) => {
     const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
 
     try {
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
       const { name, email, password } = req.body;
 
       // Cek user existing
@@ -76,10 +87,12 @@ router.post(
         },
       });
     } catch (error) {
-      res.status(500).json({
-        status: "error",
-        message: "Internal server error",
-      });
+      // 6. Handle MongoDB duplicate key error
+      if (error.code === 11000) {
+        return sendErrorResponse(res, 409, "Email sudah terdaftar");
+      }
+      console.error("Registration Error:", error);
+      sendErrorResponse(res, 500, "Internal server error");
     }
   }
 );
@@ -92,12 +105,13 @@ router.post(
     body("password").exists().withMessage("Password is required"),
   ],
   async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
     try {
+      // Validasi input
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
       const { email, password } = req.body;
 
       if (!email || !password) {
@@ -107,8 +121,8 @@ router.post(
         });
       }
 
-      // Cek user exists
-      const user = await User.findOne({ email });
+      // Cek user exists dan password match dengan method comparePassword di model User
+      const user = await User.findOne({ email }).select("+password");
       if (!user) {
         return res.status(401).json({
           status: "error",
@@ -144,10 +158,8 @@ router.post(
         },
       });
     } catch (error) {
-      res.status(500).json({
-        status: "error",
-        message: "Internal server error",
-      });
+      console.error("Login Error:", error);
+      sendErrorResponse(res, 500, "Internal server error");
     }
   }
 );
