@@ -88,7 +88,7 @@ router.post("/", auth, async (req, res) => {
 // Remove from favorites
 router.delete("/:movieId", auth, async (req, res) => {
   try {
-    const { itemId } = req.params;
+    const { movieId } = req.params;
     const { type } = req.query;
 
     // if (!type) {
@@ -99,7 +99,7 @@ router.delete("/:movieId", auth, async (req, res) => {
 
     const deleted = await Favorite.findOneAndDelete({
       user: req.user.userId,
-      itemId,
+      movieId,
       type,
     });
 
