@@ -266,6 +266,7 @@ router.get("/progress/:movieId", auth, async (req, res) => {
     movieId: Number(req.params.movieId),
     userId: req.user.userId,
     totalWatched: result.totalWatched,
+    totalDuration: result.totalDuration,
     progress: (result.totalWatched / result.totalDuration) * 100,
     isCompleted: result.totalWatched >= result.totalDuration,
   });
