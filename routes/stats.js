@@ -31,9 +31,7 @@ router.get("/", auth, async (req, res) => {
       WatchHistory.countDocuments({ user: userId }),
       WatchHistory.countDocuments({
         user: userId,
-        $expr: {
-          $gte: ["$durationWatched", { $multiply: ["$duration", 0.9] }],
-        },
+        progressPercentage: { $gte: 90 },
       }),
     ]);
 
