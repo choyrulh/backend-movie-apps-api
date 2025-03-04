@@ -236,7 +236,6 @@ router.get("/watch-time", auth, async (req, res) => {
       totalDuration: totalDuration[0]?.total || 0,
       recentGenres,
       watchHistoryByPeriod,
-      totalMinutes: watchTime[0]?.total || 0,
       completedCount: completedContent[0]?.completedCount || 0,
       period: period || "all-time",
     });
@@ -244,7 +243,7 @@ router.get("/watch-time", auth, async (req, res) => {
     console.error("Error in /watch-time:", error);
     res.status(500).json({
       status: "error",
-      message: error.message,
+      message: "Internal server error",
     });
   }
 });
