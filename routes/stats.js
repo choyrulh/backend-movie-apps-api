@@ -85,16 +85,7 @@ router.get("/", auth, async (req, res) => {
             totalMovies: { $sum: 1 },
             totalCompleted: {
               $sum: {
-                $cond: [
-                  {
-                    $gte: [
-                      "$durationWatched",
-                      { $multiply: ["$duration", 0.9] },
-                    ],
-                  },
-                  1,
-                  0,
-                ],
+                $cond: [{ $gte: ["$progressPercentage", 90] }, 1, 0],
               },
             },
           },
