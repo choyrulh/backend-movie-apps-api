@@ -239,7 +239,7 @@ router.get("/watch-time", auth, async (req, res) => {
     console.error("Error in /watch-time:", error);
     res.status(500).json({
       status: "error",
-      message: "Internal server error",
+      message: error.message,
     });
   }
 });
