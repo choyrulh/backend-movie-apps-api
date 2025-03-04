@@ -3,6 +3,7 @@ const authMiddleware = require("../middleware/auth"); // Tambahkan ini
 const RecentlyWatched = require("../models/RecentlyWatched");
 const auth = require("../middleware/auth.middleware");
 const mongoose = require("mongoose");
+const WatchHistory = require("../models/RecentlyWatched");
 
 // Tambahkan middleware auth untuk semua route
 // router.use(authMiddleware);
@@ -231,6 +232,10 @@ router.get("/watch-time", auth, async (req, res) => {
     }
 
     res.json({
+      totalWatched,
+      totalDuration: totalDuration[0]?.total || 0,
+      recentGenres,
+      watchHistoryByPeriod,
       totalMinutes: watchTime[0]?.total || 0,
       completedCount: completedContent[0]?.completedCount || 0,
       period: period || "all-time",
