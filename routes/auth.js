@@ -44,14 +44,21 @@ router.post(
       .isLength({ min: 6 })
       .withMessage("Password must be at least 6 characters")
       .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).*$/)
-      .withMessage("Password harus mengandung huruf besar, kecil, dan angka"),
+      .withMessage("Password must contain at least one uppercase letter, one lowercase letter, and one number"),
   ],
   async (req, res) => {
     const errors = validationResult(req);
 
     try {
       if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
+        return res.status(400).json({
+          status: "error",
+          message: "Validation failed",
+          errors: errors.array().map((err) => ({
+            field: err.param,
+            message: err.msg,
+          })),
+        });
       }
 
       const { name, email, password } = req.body;
@@ -62,6 +69,7 @@ router.post(
         return res.status(409).json({
           status: "error",
           message: "User already exists",
+          errors: [{ field: "email", message: "Email already registered" }],
         });
       }
 
@@ -87,15 +95,25 @@ router.post(
         },
       });
     } catch (error) {
-      // 6. Handle MongoDB duplicate key error
+      // Handle MongoDB duplicate key error
       if (error.code === 11000) {
-        return sendErrorResponse(res, 409, "Email sudah terdaftar");
+        return res.status(409).json({
+          status: "error",
+          message: "Email already registered",
+          errors: [{ field: "email", message: "Email already registered" }],
+        });
       }
+
       console.error("Registration Error:", error);
-      sendErrorResponse(res, 500, "Internal server error");
+      res.status(500).json({
+        status: "error",
+        message: "Internal server error",
+        errors: [{ field: null, message: "Something went wrong, please try again later" }],
+      });
     }
   }
 );
+
 
 // Login dengan validasi
 router.post(
