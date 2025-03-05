@@ -10,12 +10,7 @@ router.get("/", auth, async (req, res) => {
     const watchlist = await Watchlist.find({ user: req.user.userId }).sort({
       addedAt: -1,
     });
-    res.json({
-      message: "Watchlist retrieved",
-      status: 200,
-      length: watchlist.length,
-      watchlist,
-    });
+    res.status(200).json(watchlist);
   } catch (error) {
     res.status(500).json({ message: "Server error" });
   }
