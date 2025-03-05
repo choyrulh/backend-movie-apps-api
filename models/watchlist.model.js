@@ -35,10 +35,6 @@ const watchlistSchema = new mongoose.Schema({
       name: { type: String, required: true },
     },
   ],
-  isWatchlist: {
-    type: Boolean,
-    default: true,
-  },
 });
 
 module.exports = mongoose.model("Watchlist", watchlistSchema);

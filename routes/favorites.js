@@ -15,12 +15,7 @@ router.get("/", auth, async (req, res) => {
     }
 
     const favorites = await Favorite.find(query).sort({ addedAt: -1 });
-    res.json({
-      message: "success",
-      status: 200,
-      length: favorites.length,
-      favorites,
-    });
+    res.status(200).json(favorites);
   } catch (error) {
     res.json({
       message: "Internal server error",

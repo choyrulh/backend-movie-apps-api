@@ -44,10 +44,6 @@ const favoriteSchema = new mongoose.Schema({
       name: { type: String, required: true },
     },
   ],
-  isFavorites: {
-    type: Boolean,
-    default: true,
-  },
 });
 
 module.exports = mongoose.model("Favorite", favoriteSchema);

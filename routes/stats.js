@@ -2,6 +2,8 @@ const express = require("express");
 const auth = require("../middleware/auth.middleware");
 const WatchHistory = require("../models/RecentlyWatched");
 const mongoose = require("mongoose");
+const Favorites = require("../models/favorite.model");
+const Watchlist = require("../models/watchlist.model");
 
 const router = express.Router();
 
@@ -26,14 +28,17 @@ router.get("/", auth, async (req, res) => {
       });
     }
 
-    // Total film ditonton dan yang selesai (>=90%)
-    const [totalWatched, totalCompleted] = await Promise.all([
-      WatchHistory.countDocuments({ user: userId }),
-      WatchHistory.countDocuments({
-        user: userId,
-        progressPercentage: { $gte: 90 },
-      }),
-    ]);
+    // [1] Tambahkan query untuk Favorites dan Watchlist dan Total film ditonton dan yang selesai (>=90%)
+    const [totalWatched, totalCompleted, totalFavorites, totalWatchlist] =
+      await Promise.all([
+        WatchHistory.countDocuments({ user: userId }),
+        WatchHistory.countDocuments({
+          user: userId,
+          progressPercentage: { $gte: 90 },
+        }),
+        Favorites.countDocuments({ user: userId }), // Hitung total favorit
+        Watchlist.countDocuments({ user: userId }), // Hitung total watchlist
+      ]);
 
     // Total durasi menonton dalam menit
     const totalDurationResult = await WatchHistory.aggregate([
@@ -153,6 +158,8 @@ router.get("/", auth, async (req, res) => {
       data: {
         totalMoviesWatched: totalWatched,
         totalCompletedMovies: totalCompleted,
+        totalFavorites,
+        totalWatchlist,
         totalWatchTime: totalDurationResult[0]?.total || 0,
         mostWatchedGenres,
         recentActivity: recentGenres,
