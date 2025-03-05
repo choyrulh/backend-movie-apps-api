@@ -101,24 +101,41 @@ router.post("/", auth, async (req, res) => {
       genres,
     } = req.body;
 
-    const watchEntry = new RecentlyWatched({
-      user: req.user.userId,
-      movieId,
-      title,
-      poster,
-      durationWatched: duration, // durationWatched
-      totalDuration,
-      progressPercentage,
-      genres,
-    });
+    if (
+      !movieId ||
+      !title ||
+      !poster ||
+      !duration ||
+      !progressPercentage ||
+      !totalDuration ||
+      !genres
+    ) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    const watchEntry = await RecentlyWatched.findOneAndUpdate(
+      { user: req.user.userId, movieId },
+      {
+        $set: {
+          title,
+          poster,
+          totalDuration,
+          genres,
+        },
+        $inc: { durationWatched: duration }, // Tambahkan durasi yang ditonton
+        $max: { progressPercentage }, // Pastikan progress hanya bertambah
+      },
+      { new: true, upsert: true }
+    );
 
     await watchEntry.save();
-    res.status(201).json({
+    res.json({
       message: "Added to watch history",
       status: 201,
       watchEntry,
     });
   } catch (error) {
+    console.error("Error updating watch history:", error);
     res.status(500).json({ message: "Server error" });
   }
 });
@@ -146,104 +163,156 @@ router.delete("/", auth, async (req, res) => {
   }
 });
 
-// Get total waktu menonton
+// Get total waktu menonton dengan optimasi
 router.get("/watch-time", auth, async (req, res) => {
   try {
     const userId = new mongoose.Types.ObjectId(req.user.userId);
-    const { period } = req.query; // "week" atau "month"
+    const { period } = req.query;
     const now = new Date();
-    let startDate;
 
-    if (period === "week") {
-      startDate = new Date();
-      startDate.setDate(now.getDate() - 7); // 7 hari terakhir
-    } else if (period === "month") {
-      startDate = new Date();
-      startDate.setMonth(now.getMonth() - 1); // 1 bulan terakhir
+    // Validasi parameter period
+    const validPeriods = ["week", "month", undefined];
+    if (!validPeriods.includes(period)) {
+      return res.status(400).json({
+        status: "error",
+        message:
+          "Invalid period parameter. Use 'week', 'month' or omit for all-time",
+      });
     }
 
-    // ✅ Total jumlah film yang ditonton
-    const totalWatched = await WatchHistory.countDocuments({ user: userId });
-
-    // ✅ Total waktu menonton dalam menit
-    const totalDuration = await WatchHistory.aggregate([
-      { $match: { user: userId } },
-      { $group: { _id: null, total: { $sum: "$durationWatched" } } },
-    ]);
-
-    // ✅ Mendapatkan genre terbaru yang paling sering ditonton
-    const recentGenres = await WatchHistory.aggregate([
-      { $match: { user: userId } },
-      { $sort: { watchedDate: -1 } },
-      { $limit: 10 },
-      { $unwind: "$genres" },
-      {
-        $group: {
-          _id: "$genres",
-          count: { $sum: 1 },
-        },
-      },
-      { $sort: { count: -1 } },
-      { $project: { _id: 0, genre: "$_id", count: 1 } },
-    ]);
-
-    // ✅ Hitung total durasi tontonan berdasarkan period
-    let watchHistoryByPeriod = [];
+    // Konfigurasi tanggal awal
+    const dateFilter = {};
     if (period === "week") {
-      // Per hari dalam 7 hari terakhir
-      watchHistoryByPeriod = await WatchHistory.aggregate([
-        { $match: { user: userId, watchedDate: { $gte: startDate } } },
-        { $addFields: { watchedDate: { $toDate: "$watchedDate" } } },
-        {
-          $group: {
-            _id: {
-              $dateToString: { format: "%Y-%m-%d", date: "$watchedDate" },
-            },
-            totalDuration: { $sum: "$durationWatched" },
-          },
-        },
-        { $sort: { _id: -1 } },
-        { $project: { _id: 0, date: "$_id", totalDuration: 1 } },
-      ]);
+      dateFilter.watchedDate = {
+        $gte: new Date(now.setDate(now.getDate() - 7)),
+      };
     } else if (period === "month") {
-      // Per minggu dalam 1 bulan terakhir
-      watchHistoryByPeriod = await WatchHistory.aggregate([
-        { $match: { user: userId, watchedDate: { $gte: startDate } } },
-        { $addFields: { watchedDate: { $toDate: "$watchedDate" } } },
+      dateFilter.watchedDate = {
+        $gte: new Date(now.setMonth(now.getMonth() - 1)),
+      };
+    }
+
+    // Eksekusi paralel query menggunakan Promise.all
+    const [totalStats, recentGenres, periodStats] = await Promise.all([
+      // Total stats
+      RecentlyWatched.aggregate([
+        { $match: { user: userId } },
         {
           $group: {
-            _id: {
-              week: { $isoWeek: "$watchedDate" }, // Ambil nomor minggu
-              year: { $year: "$watchedDate" }, // Ambil tahun
-            },
+            _id: null,
+            totalWatched: { $sum: 1 },
             totalDuration: { $sum: "$durationWatched" },
+            completedCount: {
+              $sum: {
+                $cond: [{ $gte: ["$progressPercentage", 90] }, 1, 0],
+              },
+            },
           },
         },
-        { $sort: { "_id.year": -1, "_id.week": -1 } },
+      ]),
+
+      // Genre terbaru
+      RecentlyWatched.aggregate([
+        { $match: { user: userId } },
+        { $sort: { watchedDate: -1 } },
+        { $limit: 10 },
+        { $unwind: "$genres" },
+        {
+          $group: {
+            _id: "$genres",
+            count: { $sum: 1 },
+            lastWatched: { $max: "$watchedDate" },
+          },
+        },
+        {
+          $sort: {
+            count: -1,
+            lastWatched: -1,
+          },
+        },
         {
           $project: {
+            genre: "$_id",
+            count: 1,
             _id: 0,
-            week: "$_id.week",
-            year: "$_id.year",
-            totalDuration: 1,
           },
         },
-      ]);
-    }
+      ]),
 
-    res.json({
-      totalWatched,
-      totalDuration: totalDuration[0]?.total || 0,
-      recentGenres,
-      watchHistoryByPeriod,
-      completedCount: completedContent[0]?.completedCount || 0,
-      period: period || "all-time",
-    });
+      // Stats berdasarkan periode
+      period
+        ? RecentlyWatched.aggregate([
+            { $match: { user: userId, ...dateFilter } },
+            {
+              $group: {
+                _id:
+                  period === "week"
+                    ? {
+                        $dateToString: {
+                          format: "%Y-%m-%d",
+                          date: "$watchedDate",
+                        },
+                      }
+                    : {
+                        week: { $isoWeek: "$watchedDate" },
+                        year: { $year: "$watchedDate" },
+                      },
+                totalDuration: { $sum: "$durationWatched" },
+                watchedCount: { $sum: 1 },
+                completedCount: {
+                  $sum: {
+                    $cond: [{ $gte: ["$progressPercentage", 90] }, 1, 0],
+                  },
+                },
+              },
+            },
+            {
+              $sort:
+                period === "week"
+                  ? { _id: 1 }
+                  : { "_id.year": 1, "_id.week": 1 },
+            },
+            {
+              $project: {
+                _id: 0,
+                date: period === "week" ? "$_id" : null,
+                week: period === "month" ? "$_id.week" : null,
+                year: period === "month" ? "$_id.year" : null,
+                totalDuration: 1,
+                watchedCount: 1,
+                completedCount: 1,
+              },
+            },
+          ])
+        : Promise.resolve([]),
+    ]);
+
+    // Format response
+    const result = {
+      status: "success",
+      data: {
+        totalWatched: totalStats[0]?.totalWatched || 0,
+        totalDuration: totalStats[0]?.totalDuration || 0,
+        completedCount: totalStats[0]?.completedCount || 0,
+        recentGenres,
+        periodStats: periodStats.map((stat) => ({
+          ...stat,
+          completionRate:
+            stat.watchedCount > 0
+              ? Math.round((stat.completedCount / stat.watchedCount) * 100)
+              : 0,
+        })),
+        period: period || "all-time",
+      },
+    };
+
+    res.json(result);
   } catch (error) {
     console.error("Error in /watch-time:", error);
     res.status(500).json({
       status: "error",
-      message: "Internal server error",
+      message: "Failed to retrieve watch statistics",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 });
