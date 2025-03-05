@@ -53,11 +53,7 @@ router.post(
       if (!errors.isEmpty()) {
         return res.status(400).json({
           status: "error",
-          message: "Validation failed",
-          errors: errors.array().map((err) => ({
-            field: err.param,
-            message: err.msg,
-          })),
+          message: errors.array()[0].msg
         });
       }
 
