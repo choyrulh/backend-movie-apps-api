@@ -77,16 +77,28 @@ router.get("/", auth, async (req, res) => {
     const history = await RecentlyWatched.find({ user: req.user.userId }).sort({
       watchedAt: -1, // Urutkan dari yang terakhir ditonton
     });
+
+    // Menambahkan perhitungan progressPercentage untuk setiap item dalam history
+    const updatedHistory = history.map((item) => {
+      const progressPercentage = (item.durationWatched / item.totalDuration) * 100;
+      return {
+        ...item._doc, // Menggunakan _doc untuk mengambil data dari mongoose document
+        progressPercentage: Math.min(progressPercentage, 100).toFixed(1), // Pastikan progress tidak lebih dari 100%
+      };
+    });
+
     res.json({
       message: "Watch history retrieved",
       status: 200,
-      length: history.length,
-      history,
+      length: updatedHistory.length,
+      history: updatedHistory,
     });
   } catch (error) {
+    console.error("Error retrieving watch history:", error);
     res.status(500).json({ message: "Server error" });
   }
 });
+
 
 // Add to watch history
 router.post("/", auth, async (req, res) => {
@@ -95,19 +107,21 @@ router.post("/", auth, async (req, res) => {
       movieId,
       title,
       poster,
-      duration,
-      progressPercentage,
-      totalDuration,
-      genres,
       backdrop_path,
+      duration,
+      durationWatched,
+      totalDuration,
+      genres
     } = req.body;
 
+    // Validasi input
     if (
       !movieId ||
       !title ||
       !poster ||
+      !backdrop_path ||
       !duration ||
-      !progressPercentage ||
+      !durationWatched ||
       !totalDuration ||
       !genres
     ) {
@@ -120,26 +134,28 @@ router.post("/", auth, async (req, res) => {
         $set: {
           title,
           poster,
+          backdrop_path,
           totalDuration,
-          genres,
+          genres
         },
-        $inc: { durationWatched: duration }, // Tambahkan durasi yang ditonton
-        $max: { progressPercentage }, // Pastikan progress hanya bertambah
+        $inc: { durationWatched: duration }, // Menambahkan durasi yang ditonton
+        $max: { progressPercentage } // Pastikan progress hanya bertambah
       },
       { new: true, upsert: true }
     );
 
     await watchEntry.save();
-    res.json({
+    res.status(201).json({
       message: "Added to watch history",
       status: 201,
-      watchEntry,
+      watchEntry
     });
   } catch (error) {
     console.error("Error updating watch history:", error);
     res.status(500).json({ message: "Server error" });
   }
 });
+
 
 // Delete specific watch history entry
 router.delete("/:id", auth, async (req, res) => {
