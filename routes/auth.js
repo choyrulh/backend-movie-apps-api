@@ -65,7 +65,6 @@ router.post(
         return res.status(409).json({
           status: "error",
           message: "User already exists",
-          errors: [{ field: "email", message: "Email already registered" }],
         });
       }
 
@@ -82,6 +81,7 @@ router.post(
       res.status(201).json({
         status: "success",
         message: "User successfully created",
+        token,
         data: {
           user: {
             _id: user._id,

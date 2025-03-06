@@ -99,6 +99,7 @@ router.post("/", auth, async (req, res) => {
       progressPercentage,
       totalDuration,
       genres,
+      backdrop_path,
     } = req.body;
 
     if (
