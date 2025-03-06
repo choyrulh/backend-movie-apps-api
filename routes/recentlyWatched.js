@@ -108,7 +108,6 @@ router.post("/", auth, async (req, res) => {
       title,
       poster,
       backdrop_path,
-      duration,
       durationWatched,
       totalDuration,
       genres
@@ -120,7 +119,6 @@ router.post("/", auth, async (req, res) => {
       !title ||
       !poster ||
       !backdrop_path ||
-      !duration ||
       !durationWatched ||
       !totalDuration ||
       !genres
@@ -128,6 +126,16 @@ router.post("/", auth, async (req, res) => {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
+    // Cari apakah movie sudah ada di history user
+    const existingEntry = await RecentlyWatched.findOne({
+      user: req.user.userId,
+      movieId
+    });
+
+    // Hitung progressPercentage
+    const progressPercentage = ((durationWatched / totalDuration) * 100).toFixed(1);
+
+    // Update atau insert watch history
     const watchEntry = await RecentlyWatched.findOneAndUpdate(
       { user: req.user.userId, movieId },
       {
@@ -136,15 +144,16 @@ router.post("/", auth, async (req, res) => {
           poster,
           backdrop_path,
           totalDuration,
-          genres
-        },
-        $inc: { durationWatched: duration }, // Menambahkan durasi yang ditonton
-        $max: { progressPercentage } // Pastikan progress hanya bertambah
+          genres,
+          durationWatched,
+          progressPercentage
+        }
       },
       { new: true, upsert: true }
     );
 
     await watchEntry.save();
+
     res.status(201).json({
       message: "Added to watch history",
       status: 201,
@@ -155,6 +164,7 @@ router.post("/", auth, async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+
 
 
 // Delete specific watch history entry
