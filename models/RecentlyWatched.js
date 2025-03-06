@@ -4,7 +4,7 @@ const recentlyWatchedSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: "users", required: true },
   movieId: { type: Number, required: true }, // TMDB movie ID
   title: { type: String, required: true },
-  posterPath: String,
+  poster: String,
   backdrop_path: String,
   duration: Number, // Duration in minute
   durationWatched: Number, // Duration in minute
