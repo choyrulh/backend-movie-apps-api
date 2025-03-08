@@ -104,18 +104,21 @@ router.get("/", auth, async (req, res) => {
 router.post("/", auth, async (req, res) => {
   try {
     const {
-      movieId,
+      type, // Tambahkan type
+      contentId, // Ganti movieId menjadi contentId
       title,
       poster,
       backdrop_path,
       durationWatched,
       totalDuration,
       genres,
+      episode,
+      season,
     } = req.body;
 
     // Validasi input
     if (
-      !movieId ||
+      !contentId ||
       !title ||
       !poster ||
       !backdrop_path ||
@@ -126,10 +129,19 @@ router.post("/", auth, async (req, res) => {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
-    // Cari apakah movie sudah ada di history user
+    // Validasi input untuk TV
+    if (type === "tv" && (!season || !episode)) {
+      return res
+        .status(400)
+        .json({ message: "Season and episode are required for TV" });
+    }
+
+    // Cek existing entry
     const existingEntry = await RecentlyWatched.findOne({
       user: req.user.userId,
-      movieId,
+      contentId,
+      type,
+      ...(type === "tv" && { season, episode }), // Tambahkan season dan episode jika TV
     });
 
     // Hitung progressPercentage
@@ -140,7 +152,12 @@ router.post("/", auth, async (req, res) => {
 
     // Update atau insert watch history
     const watchEntry = await RecentlyWatched.findOneAndUpdate(
-      { user: req.user.userId, movieId },
+      {
+        user: req.user.userId,
+        contentId,
+        type,
+        ...(type === "tv" && { season, episode }),
+      },
       {
         $set: {
           title,
@@ -151,12 +168,11 @@ router.post("/", auth, async (req, res) => {
           durationWatched,
           progressPercentage,
           watchedDate: new Date(),
+          ...(type === "tv" && { season, episode }), // Simpan season dan episode jika TV
         },
       },
       { new: true, upsert: true }
     );
-
-    await watchEntry.save();
 
     res.status(201).json({
       message: "Added to watch history",
@@ -346,6 +362,7 @@ router.get("/watch-time", auth, async (req, res) => {
   }
 });
 
+// Get progress percentage for a specific movie
 router.get("/progress/:movieId", auth, async (req, res) => {
   const progress = await RecentlyWatched.aggregate([
     {
@@ -374,4 +391,36 @@ router.get("/progress/:movieId", auth, async (req, res) => {
   });
 });
 
+// Get TV show progress
+router.get(
+  "/tv/:contentId/season/:season/episode/:episode",
+  auth,
+  async (req, res) => {
+    try {
+      const entry = await RecentlyWatched.findOne({
+        user: req.user.userId,
+        type: "tv",
+        contentId: Number(req.params.contentId),
+        season: Number(req.params.season),
+        episode: Number(req.params.episode),
+      });
+
+      if (!entry) {
+        return res.json({
+          progressPercentage: 0,
+          durationWatched: 0,
+          totalDuration: 0,
+        });
+      }
+
+      res.json({
+        progressPercentage: entry.progressPercentage,
+        durationWatched: entry.durationWatched,
+        totalDuration: entry.totalDuration,
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  }
+);
 module.exports = router;

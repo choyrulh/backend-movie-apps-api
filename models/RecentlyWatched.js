@@ -2,7 +2,10 @@ const mongoose = require("mongoose");
 
 const recentlyWatchedSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: "users", required: true },
-  movieId: { type: Number, required: true }, // TMDB movie ID
+  type: { type: String, enum: ["movie", "tv"], required: true }, // Tambahkan field type
+  contentId: { type: Number, required: true }, // Ganti movieId menjadi contentId
+  season: Number, // Tambahkan untuk TV
+  episode: Number, // Tambahkan untuk TV
   title: { type: String, required: true },
   poster: String,
   backdrop_path: String,
