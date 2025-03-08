@@ -13,17 +13,32 @@ router.get("/", auth, async (req, res) => {
   try {
     const userId = new mongoose.Types.ObjectId(req.user.userId);
     const { type } = req.query;
-    const now = new Date();
-    let startDate;
+    const wibOffset = 7 * 60 * 60 * 1000; // Offset WIB dalam milidetik
 
-    // Atur periode berdasarkan tipe
+    // 1. Hitung waktu saat ini dalam WIB dan UTC
+    const nowUTC = new Date();
+    const nowWIB = new Date(nowUTC.getTime() + wibOffset);
+
+    let startDate;
+    let startDateUTC;
+
+    // 2. Tentukan periode berdasarkan tipe
     if (type === "week") {
-      startDate = new Date(now);
-      startDate.setDate(now.getDate() - 6); // 6 hari terakhir dari hari ini
-      startDate.setHours(0, 0, 0, 0);
+      // Hitung awal hari ini di WIB (00:00 WIB)
+      const startOfTodayWIB = new Date(nowWIB);
+      startOfTodayWIB.setUTCHours(0, 0, 0, 0);
+
+      // Convert ke UTC
+      startDateUTC = new Date(startOfTodayWIB.getTime() - wibOffset);
+
+      // Kurangi 6 hari untuk mendapatkan rentang mingguan
+      startDate = new Date(startDateUTC.getTime() - 6 * 24 * 60 * 60 * 1000);
     } else if (type === "month") {
-      startDate = new Date(now.getTime() - 28 * 24 * 60 * 60 * 1000); // 4 minggu terakhir
-      startDate.setHours(0, 0, 0, 0);
+      // Hitung 28 hari terakhir dari awal hari ini di WIB
+      const startOfTodayWIB = new Date(nowWIB);
+      startOfTodayWIB.setUTCHours(0, 0, 0, 0);
+      startDateUTC = new Date(startOfTodayWIB.getTime() - wibOffset);
+      startDate = new Date(startDateUTC.getTime() - 28 * 24 * 60 * 60 * 1000);
     } else {
       return res.status(400).json({
         status: "error",
@@ -59,7 +74,7 @@ router.get("/", auth, async (req, res) => {
       { $project: { _id: 0, genre: "$_id", count: 1 } },
     ]);
 
-    // [4] Genre dari 10 tontonan terakhir
+    // [4] Genre dari 10 tontonan terakhir (UTC+7)
     const recentGenres = await WatchHistory.aggregate([
       { $match: { user: userId } },
       { $sort: { watchedDate: -1 } },
@@ -67,17 +82,40 @@ router.get("/", auth, async (req, res) => {
       { $unwind: "$genres" },
       { $group: { _id: "$genres", count: { $sum: 1 } } },
       { $sort: { count: -1 } },
-      { $project: { _id: 0, genre: "$_id", count: 1 } },
+      {
+        $project: {
+          _id: 0,
+          genre: "$_id",
+          count: 1,
+          // Tambahkan waktu terakhir ditonton dalam WIB
+          lastWatched: {
+            $dateToString: {
+              format: "%Y-%m-%dT%H:%M:%S",
+              date: "$watchedDate",
+              timezone: "+07:00",
+            },
+          },
+        },
+      },
     ]);
 
-    // [5] Statistik periode
-    let watchHistoryByPeriod = [];
+    // [5] Pipeline untuk statistik periode
     const periodPipeline = {
       week: [
         {
+          $match: {
+            user: userId,
+            watchedDate: { $gte: startDate },
+          },
+        },
+        {
           $group: {
             _id: {
-              $dateToString: { format: "%Y-%m-%d", date: "$watchedDate" },
+              $dateToString: {
+                format: "%Y-%m-%d",
+                date: "$watchedDate",
+                timezone: "+07:00",
+              },
             },
             totalDuration: { $sum: "$durationWatched" },
             totalMovies: { $sum: 1 },
@@ -99,10 +137,21 @@ router.get("/", auth, async (req, res) => {
       ],
       month: [
         {
+          $match: {
+            user: userId,
+            watchedDate: { $gte: startDate },
+          },
+        },
+        {
+          $addFields: {
+            wibDate: { $add: ["$watchedDate", wibOffset] },
+          },
+        },
+        {
           $group: {
             _id: {
-              year: { $year: "$watchedDate" },
-              week: { $isoWeek: "$watchedDate" },
+              year: { $year: "$wibDate" },
+              week: { $isoWeek: "$wibDate" },
             },
             totalDuration: { $sum: "$durationWatched" },
             totalMovies: { $sum: 1 },
@@ -125,47 +174,45 @@ router.get("/", auth, async (req, res) => {
       ],
     };
 
+    let watchHistoryByPeriod = [];
     if (type) {
-      const aggregationResult = await WatchHistory.aggregate([
-        { $match: { user: userId, watchedDate: { $gte: startDate } } },
-        ...periodPipeline[type],
-      ]);
+      const aggregationResult = await WatchHistory.aggregate(
+        periodPipeline[type]
+      );
 
       // Generate data untuk periode kosong
       if (type === "week") {
         const datesInRange = [];
-        const currentDate = new Date(startDate);
-        while (currentDate <= now) {
-          datesInRange.push(new Date(currentDate));
+        const currentDate = new Date(startDate.getTime() + wibOffset);
+        const endDate = new Date(nowUTC.getTime() + wibOffset);
+
+        while (currentDate <= endDate) {
+          const formattedDate = currentDate.toISOString().split("T")[0];
+          datesInRange.push(formattedDate);
           currentDate.setDate(currentDate.getDate() + 1);
         }
 
         watchHistoryByPeriod = datesInRange.map((date) => {
-          const formattedDate = date.toISOString().split("T")[0];
-          const found = aggregationResult.find((d) => d.date === formattedDate);
-          return found
-            ? {
-                ...found,
-                completionRate: Math.round(
-                  (found.totalCompleted / (found.totalMovies || 1)) * 100
-                ),
-              }
-            : {
-                date: formattedDate,
-                totalDuration: 0,
-                totalMovies: 0,
-                totalCompleted: 0,
-                completionRate: 0,
-              };
+          const found = aggregationResult.find((d) => d.date === date);
+          return {
+            date,
+            totalDuration: found?.totalDuration || 0,
+            totalMovies: found?.totalMovies || 0,
+            totalCompleted: found?.totalCompleted || 0,
+            completionRate: found
+              ? Math.round((found.totalCompleted / found.totalMovies) * 100) ||
+                0
+              : 0,
+          };
         });
       } else if (type === "month") {
         const expectedWeeks = [];
         for (let i = 3; i >= 0; i--) {
           const targetDate = new Date(
-            now.getTime() - i * 7 * 24 * 60 * 60 * 1000
+            nowWIB.getTime() - i * 7 * 24 * 60 * 60 * 1000
           );
           expectedWeeks.push({
-            year: targetDate.getFullYear(),
+            year: targetDate.getUTCFullYear(),
             week: getISOWeek(targetDate),
           });
         }
@@ -174,28 +221,24 @@ router.get("/", auth, async (req, res) => {
           const found = aggregationResult.find(
             (d) => d.year === ew.year && d.week === ew.week
           );
-          return found
-            ? {
-                ...found,
-                completionRate: Math.round(
-                  (found.totalCompleted / (found.totalMovies || 1)) * 100
-                ),
-              }
-            : {
-                year: ew.year,
-                week: ew.week,
-                totalDuration: 0,
-                totalMovies: 0,
-                totalCompleted: 0,
-                completionRate: 0,
-              };
+          return {
+            year: ew.year,
+            week: ew.week,
+            totalDuration: found?.totalDuration || 0,
+            totalMovies: found?.totalMovies || 0,
+            totalCompleted: found?.totalCompleted || 0,
+            completionRate: found
+              ? Math.round((found.totalCompleted / found.totalMovies) * 100) ||
+                0
+              : 0,
+          };
         });
       }
     }
 
     res.json({
       status: "success",
-      message: "Watch statistics retrieved successfully",
+      message: "Statistik berhasil didapatkan",
       data: {
         totalMoviesWatched: totalWatched,
         totalCompletedMovies: totalCompleted,
@@ -206,12 +249,16 @@ router.get("/", auth, async (req, res) => {
         recentActivity: recentGenres,
         watchHistoryByPeriod,
       },
+      timezone: "UTC+7",
+      lastUpdated: new Date().toLocaleString("en-US", {
+        timeZone: "Asia/Jakarta",
+      }),
     });
   } catch (error) {
-    console.error("Error fetching watch statistics:", error);
+    console.error("Error fetching statistics:", error);
     res.status(500).json({
       status: "error",
-      message: "Internal server error",
+      message: "Kesalahan server internal",
     });
   }
 });

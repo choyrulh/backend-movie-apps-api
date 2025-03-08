@@ -149,7 +149,7 @@ router.post("/", auth, async (req, res) => {
           genres,
           durationWatched,
           progressPercentage,
-          watchedDate: new Date(),
+          watchedDate: new Date(Date.now() + 7 * 60 * 60 * 1000),
           ...(type === "tv" && { season, episode }),
         },
       },
