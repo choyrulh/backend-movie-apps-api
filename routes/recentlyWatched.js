@@ -104,60 +104,42 @@ router.get("/", auth, async (req, res) => {
 router.post("/", auth, async (req, res) => {
   try {
     const {
-      type, // Tambahkan type
-      contentId, // Ganti movieId menjadi contentId
+      type,
+      contentId,
+      season,
+      episode,
       title,
       poster,
       backdrop_path,
       durationWatched,
       totalDuration,
       genres,
-      episode,
-      season,
     } = req.body;
 
-    // Validasi input
-    if (
-      !contentId ||
-      !title ||
-      !poster ||
-      !backdrop_path ||
-      !durationWatched ||
-      !totalDuration ||
-      !genres
-    ) {
-      return res.status(400).json({ message: "Missing required fields" });
-    }
-
-    // Validasi input untuk TV
+    // Validasi input TV
     if (type === "tv" && (!season || !episode)) {
       return res
         .status(400)
-        .json({ message: "Season and episode are required for TV" });
+        .json({ message: "Season dan episode diperlukan untuk TV" });
     }
 
-    // Cek existing entry
-    const existingEntry = await RecentlyWatched.findOne({
+    // Query untuk mencari entri yang sama
+    const filter = {
       user: req.user.userId,
       contentId,
       type,
-      ...(type === "tv" && { season, episode }), // Tambahkan season dan episode jika TV
-    });
+      ...(type === "tv" && { season, episode }), // Untuk TV, bedakan berdasarkan season & episode
+    };
 
-    // Hitung progressPercentage
+    // Hitung progress
     const progressPercentage = (
       (durationWatched / totalDuration) *
       100
     ).toFixed(1);
 
-    // Update atau insert watch history
+    // Update atau replace data
     const watchEntry = await RecentlyWatched.findOneAndUpdate(
-      {
-        user: req.user.userId,
-        contentId,
-        type,
-        ...(type === "tv" && { season, episode }),
-      },
+      filter,
       {
         $set: {
           title,
@@ -168,19 +150,19 @@ router.post("/", auth, async (req, res) => {
           durationWatched,
           progressPercentage,
           watchedDate: new Date(),
-          ...(type === "tv" && { season, episode }), // Simpan season dan episode jika TV
+          ...(type === "tv" && { season, episode }),
         },
       },
-      { new: true, upsert: true }
+      {
+        new: true,
+        upsert: true, // Buat baru jika tidak ditemukan
+        overwrite: true, // Timpa seluruh dokumen yang exist
+      }
     );
 
-    res.status(201).json({
-      message: "Added to watch history",
-      status: 201,
-      watchEntry,
-    });
+    res.status(201).json(watchEntry);
   } catch (error) {
-    console.error("Error updating watch history:", error);
+    console.error("Error:", error);
     res.status(500).json({ message: "Server error" });
   }
 });
