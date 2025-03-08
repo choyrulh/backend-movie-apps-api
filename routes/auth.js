@@ -16,7 +16,7 @@ const cookieOptions = {
   httpOnly: true,
   secure: process.env.NODE_ENV === "production", // Hanya HTTPS di production
   sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax",
-  maxAge: 24 * 60 * 60 * 1000, // 24 jam
+  maxAge: 7 * 24 * 60 * 60 * 1000, // 1 minggu
 };
 
 // Helper untuk membuat token
@@ -44,7 +44,9 @@ router.post(
       .isLength({ min: 6 })
       .withMessage("Password must be at least 6 characters")
       .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).*$/)
-      .withMessage("Password must contain at least one uppercase letter, one lowercase letter, and one number"),
+      .withMessage(
+        "Password must contain at least one uppercase letter, one lowercase letter, and one number"
+      ),
   ],
   async (req, res) => {
     const errors = validationResult(req);
@@ -53,7 +55,7 @@ router.post(
       if (!errors.isEmpty()) {
         return res.status(400).json({
           status: "error",
-          message: errors.array()[0].msg
+          message: errors.array()[0].msg,
         });
       }
 
@@ -104,12 +106,16 @@ router.post(
       res.status(500).json({
         status: "error",
         message: "Internal server error",
-        errors: [{ field: null, message: "Something went wrong, please try again later" }],
+        errors: [
+          {
+            field: null,
+            message: "Something went wrong, please try again later",
+          },
+        ],
       });
     }
   }
 );
-
 
 // Login dengan validasi
 router.post(

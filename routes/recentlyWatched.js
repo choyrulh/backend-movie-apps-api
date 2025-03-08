@@ -75,12 +75,13 @@ const WatchHistory = require("../models/RecentlyWatched");
 router.get("/", auth, async (req, res) => {
   try {
     const history = await RecentlyWatched.find({ user: req.user.userId }).sort({
-      watchedAt: -1, // Urutkan dari yang terakhir ditonton
+      watchedDate: -1, // Urutkan dari yang terakhir ditonton
     });
 
     // Menambahkan perhitungan progressPercentage untuk setiap item dalam history
     const updatedHistory = history.map((item) => {
-      const progressPercentage = (item.durationWatched / item.totalDuration) * 100;
+      const progressPercentage =
+        (item.durationWatched / item.totalDuration) * 100;
       return {
         ...item._doc, // Menggunakan _doc untuk mengambil data dari mongoose document
         progressPercentage: Math.min(progressPercentage, 100).toFixed(1), // Pastikan progress tidak lebih dari 100%
@@ -99,7 +100,6 @@ router.get("/", auth, async (req, res) => {
   }
 });
 
-
 // Add to watch history
 router.post("/", auth, async (req, res) => {
   try {
@@ -110,7 +110,7 @@ router.post("/", auth, async (req, res) => {
       backdrop_path,
       durationWatched,
       totalDuration,
-      genres
+      genres,
     } = req.body;
 
     // Validasi input
@@ -129,11 +129,14 @@ router.post("/", auth, async (req, res) => {
     // Cari apakah movie sudah ada di history user
     const existingEntry = await RecentlyWatched.findOne({
       user: req.user.userId,
-      movieId
+      movieId,
     });
 
     // Hitung progressPercentage
-    const progressPercentage = ((durationWatched / totalDuration) * 100).toFixed(1);
+    const progressPercentage = (
+      (durationWatched / totalDuration) *
+      100
+    ).toFixed(1);
 
     // Update atau insert watch history
     const watchEntry = await RecentlyWatched.findOneAndUpdate(
@@ -146,8 +149,9 @@ router.post("/", auth, async (req, res) => {
           totalDuration,
           genres,
           durationWatched,
-          progressPercentage
-        }
+          progressPercentage,
+          watchedDate: new Date(),
+        },
       },
       { new: true, upsert: true }
     );
@@ -157,15 +161,13 @@ router.post("/", auth, async (req, res) => {
     res.status(201).json({
       message: "Added to watch history",
       status: 201,
-      watchEntry
+      watchEntry,
     });
   } catch (error) {
     console.error("Error updating watch history:", error);
     res.status(500).json({ message: "Server error" });
   }
 });
-
-
 
 // Delete specific watch history entry
 router.delete("/:id", auth, async (req, res) => {
