@@ -116,20 +116,30 @@ router.post("/", auth, async (req, res) => {
       genres,
     } = req.body;
 
-    // Validasi input TV
+    if (!contentId || !type) {
+      return res.status(400).json({ message: "contentId dan type diperlukan" });
+    }
+
     if (type === "tv" && (!season || !episode)) {
       return res
         .status(400)
         .json({ message: "Season dan episode diperlukan untuk TV" });
     }
 
-    // Query untuk mencari entri yang sama
+    // Pastikan totalDuration tidak nol untuk menghindari NaN
+    if (!totalDuration || totalDuration <= 0) {
+      return res
+        .status(400)
+        .json({ message: "Durasi total harus lebih dari 0" });
+    }
+
     const filter = {
       user: req.user.userId,
       contentId,
-      type,
-      ...(type === "tv" && { season, episode }), // Untuk TV, bedakan berdasarkan season & episode
+      // type,
+      // ...(type === "tv" && { season, episode }),
     };
+    console.log("filter", filter);
 
     // Hitung progress
     const progressPercentage = (
@@ -137,28 +147,44 @@ router.post("/", auth, async (req, res) => {
       100
     ).toFixed(1);
 
-    // Update atau replace data
-    const watchEntry = await RecentlyWatched.findOneAndUpdate(
-      filter,
-      {
-        $set: {
-          title,
-          poster,
-          backdrop_path,
-          totalDuration,
-          genres,
-          durationWatched,
-          progressPercentage,
-          watchedDate: new Date(Date.now() + 7 * 60 * 60 * 1000),
-          ...(type === "tv" && { season, episode }),
-        },
-      },
-      {
-        new: true,
-        upsert: true, // Buat baru jika tidak ditemukan
-        overwrite: true, // Timpa seluruh dokumen yang exist
-      }
-    );
+    // Cari data yang sudah ada
+    let watchEntry = await RecentlyWatched.findOne(filter);
+    console.log("watchEntry", watchEntry);
+
+    if (watchEntry) {
+      // Update data yang sudah ada
+      watchEntry.title = title;
+      watchEntry.poster = poster;
+      watchEntry.backdrop_path = backdrop_path;
+      watchEntry.totalDuration = totalDuration;
+      watchEntry.genres = genres;
+      watchEntry.durationWatched = durationWatched;
+      watchEntry.progressPercentage = progressPercentage;
+      watchEntry.watchedDate = new Date();
+      watchEntry.season = season;
+      watchEntry.episode = episode;
+
+      console.log("watchEntry", watchEntry);
+
+      await watchEntry.save();
+    } else {
+      // Buat entri baru jika tidak ditemukan
+      watchEntry = await RecentlyWatched.create({
+        user: req.user.userId,
+        contentId,
+        type,
+        season,
+        episode,
+        title,
+        poster,
+        backdrop_path,
+        totalDuration,
+        genres,
+        durationWatched,
+        progressPercentage,
+        watchedDate: new Date(),
+      });
+    }
 
     res.status(201).json(watchEntry);
   } catch (error) {
