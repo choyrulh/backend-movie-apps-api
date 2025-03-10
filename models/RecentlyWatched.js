@@ -6,6 +6,7 @@ const recentlyWatchedSchema = new mongoose.Schema({
   contentId: { type: Number, required: true }, // Ganti movieId menjadi contentId
   season: Number, // Tambahkan untuk TV
   episode: Number, // Tambahkan untuk TV
+  totalEpisodes: Number, // Hanya untuk type: "tv"
   title: { type: String, required: true },
   poster: String,
   backdrop_path: String,

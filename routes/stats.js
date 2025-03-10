@@ -33,12 +33,14 @@ router.get("/", auth, async (req, res) => {
     if (type === "week") {
       // Get start date for 7 days ago from today (including today)
       startDate = new Date(startOfTodayUTC.getTime() - 6 * 24 * 60 * 60 * 1000);
+      endDate = nowUTC;
       periodLabel = "7 hari terakhir";
     } else if (type === "month") {
       // Get start date for 4 weeks ago from today (28 days including today)
       startDate = new Date(
         startOfTodayUTC.getTime() - 27 * 24 * 60 * 60 * 1000
       );
+      endDate = nowUTC;
       periodLabel = "4 minggu terakhir";
     } else {
       return res.status(400).json({
@@ -63,17 +65,32 @@ router.get("/", auth, async (req, res) => {
         user: userId,
         type: "movie",
         progressPercentage: { $gte: 90 },
+        watchedDate: { $gte: startDate, $lte: endDate },
       }),
-      // Hitung TV content yang semua episodenya selesai >=90%
+
+      // TV selesai (semua episode >=90% DAN total episode = totalEpisodes)
       RecentlyWatched.aggregate([
-        { $match: { user: userId, type: "tv" } },
+        {
+          $match: {
+            user: userId,
+            type: "tv",
+            watchedDate: { $gte: startDate, $lte: endDate },
+          },
+        },
         {
           $group: {
             _id: "$contentId",
-            minProgress: { $min: "$progressPercentage" }, // Cari progress terendah per contentId
+            episodesWatched: { $sum: 1 },
+            minProgress: { $min: "$progressPercentage" },
+            totalEpisodes: { $first: "$totalEpisodes" },
           },
         },
-        { $match: { minProgress: { $gte: 90 } } }, // Hanya contentId dengan semua episode >=90%
+        {
+          $match: {
+            minProgress: { $gte: 90 },
+            $expr: { $eq: ["$episodesWatched", "$totalEpisodes"] },
+          },
+        },
         { $count: "total" },
       ]),
       Favorites.countDocuments({ user: userId }),
@@ -90,8 +107,18 @@ router.get("/", auth, async (req, res) => {
 
     // Calculate total watch duration
     const totalDurationResult = await RecentlyWatched.aggregate([
-      { $match: { user: userId } },
-      { $group: { _id: null, total: { $sum: "$durationWatched" } } },
+      {
+        $match: {
+          user: userId,
+          watchedDate: { $gte: startDate, $lte: endDate },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: "$durationWatched" },
+        },
+      },
     ]);
 
     // Get most watched genres
@@ -386,11 +413,16 @@ router.get("/", auth, async (req, res) => {
       {
         $match: {
           user: userId,
-          watchedDate: { $gte: startDate },
+          watchedDate: { $gte: startDate, $lte: endDate },
         },
       },
       { $unwind: "$genres" },
-      { $group: { _id: "$genres", count: { $sum: 1 } } },
+      {
+        $group: {
+          _id: "$genres",
+          count: { $sum: 1 },
+        },
+      },
       { $sort: { count: -1 } },
       { $limit: 5 },
       { $project: { _id: 0, genre: "$_id", count: 1 } },
@@ -402,12 +434,9 @@ router.get("/", auth, async (req, res) => {
       totalDurationResult[0]?.total || 0
     );
     const formattedPeriodWatchTime = formatWatchTime(totalPeriodWatchTime);
-
+    const daysInPeriod = type === "week" ? 7 : 28;
     // Calculate watch time per day average for the period
-    const avgWatchTimePerDay =
-      type === "week"
-        ? Math.round(totalPeriodWatchTime / 7)
-        : Math.round(totalPeriodWatchTime / 28);
+    const avgWatchTimePerDay = Math.round(totalPeriodWatchTime / daysInPeriod);
 
     const formattedAvgWatchTime = formatWatchTime(avgWatchTimePerDay);
 
@@ -416,7 +445,7 @@ router.get("/", auth, async (req, res) => {
       {
         $match: {
           user: userId,
-          watchedDate: { $gte: startDate },
+          watchedDate: { $gte: startDate, $lte: endDate },
         },
       },
       {
