@@ -505,7 +505,7 @@ router.get("/tv-progress/:contentId", auth, async (req, res) => {
 });
 
 // get tv show progress by episode and season
-router.get("tv/238680/season/:s/episode/:ep", auth, async (req, res) => {
+router.get("tv/:contentId/season/:s/episode/:ep", auth, async (req, res) => {
   try {
     const contentId = Number(req.params.contentId);
     const season = Number(req.params.s);
