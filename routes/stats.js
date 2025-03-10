@@ -48,18 +48,34 @@ router.get("/", auth, async (req, res) => {
     }
 
     // Get main statistics data
+    // Di dalam route GET /stats
     const [
       totalWatched,
-      totalCompleted,
+      totalCompletedMovies,
+      totalCompletedTVContent,
       totalFavorites,
       totalWatchlist,
       totalInProgress,
     ] = await Promise.all([
       RecentlyWatched.countDocuments({ user: userId }),
+      // Hitung movie yang selesai (progress >=90%)
       RecentlyWatched.countDocuments({
         user: userId,
+        type: "movie",
         progressPercentage: { $gte: 90 },
       }),
+      // Hitung TV content yang semua episodenya selesai >=90%
+      RecentlyWatched.aggregate([
+        { $match: { user: userId, type: "tv" } },
+        {
+          $group: {
+            _id: "$contentId",
+            minProgress: { $min: "$progressPercentage" }, // Cari progress terendah per contentId
+          },
+        },
+        { $match: { minProgress: { $gte: 90 } } }, // Hanya contentId dengan semua episode >=90%
+        { $count: "total" },
+      ]),
       Favorites.countDocuments({ user: userId }),
       Watchlist.countDocuments({ user: userId }),
       RecentlyWatched.countDocuments({
@@ -67,6 +83,10 @@ router.get("/", auth, async (req, res) => {
         progressPercentage: { $lt: 90, $gt: 0 },
       }),
     ]);
+
+    // Total konten yang selesai = movie + TV
+    const totalCompleted =
+      totalCompletedMovies + (totalCompletedTVContent[0]?.total || 0);
 
     // Calculate total watch duration
     const totalDurationResult = await RecentlyWatched.aggregate([

@@ -71,20 +71,52 @@ const WatchHistory = require("../models/RecentlyWatched");
 //     res.status(500).json({ message: err.message });
 //   }
 // });
+
+// Get watch history
 // Get watch history
 router.get("/", auth, async (req, res) => {
   try {
-    const history = await RecentlyWatched.find({ user: req.user.userId }).sort({
-      watchedDate: -1, // Urutkan dari yang terakhir ditonton
+    // First, get all watch history entries
+    const allHistory = await RecentlyWatched.find({
+      user: req.user.userId,
+    }).sort({
+      watchedDate: -1, // Sort by most recently watched
     });
 
-    // Menambahkan perhitungan progressPercentage untuk setiap item dalam history
+    // Create a map to track the most recent entry for each unique contentId
+    // For TV shows, we'll only keep the most recent episode
+    const uniqueContentMap = new Map();
+
+    // Process each history item
+    allHistory.forEach((item) => {
+      const key = item.contentId.toString();
+
+      // For movies, or if this contentId hasn't been seen before, add it to the map
+      if (item.type === "movie" || !uniqueContentMap.has(key)) {
+        uniqueContentMap.set(key, item);
+      }
+      // For TV shows, only replace if this episode is more recently watched
+      else if (item.type === "tv") {
+        const existingItem = uniqueContentMap.get(key);
+        if (new Date(item.watchedDate) > new Date(existingItem.watchedDate)) {
+          uniqueContentMap.set(key, item);
+        }
+      }
+    });
+
+    // Convert map values to array
+    const history = Array.from(uniqueContentMap.values());
+
+    // Sort by watchedDate to maintain chronological order
+    history.sort((a, b) => new Date(b.watchedDate) - new Date(a.watchedDate));
+
+    // Calculate progressPercentage for each item
     const updatedHistory = history.map((item) => {
       const progressPercentage =
         (item.durationWatched / item.totalDuration) * 100;
       return {
-        ...item._doc, // Menggunakan _doc untuk mengambil data dari mongoose document
-        progressPercentage: Math.min(progressPercentage, 100).toFixed(1), // Pastikan progress tidak lebih dari 100%
+        ...item._doc, // Using _doc to get mongoose document data
+        progressPercentage: Math.min(progressPercentage, 100).toFixed(1), // Ensure progress doesn't exceed 100%
       };
     });
 
@@ -100,6 +132,7 @@ router.get("/", auth, async (req, res) => {
   }
 });
 
+// Add to watch history
 // Add to watch history
 router.post("/", auth, async (req, res) => {
   try {
@@ -133,12 +166,15 @@ router.post("/", auth, async (req, res) => {
         .json({ message: "Durasi total harus lebih dari 0" });
     }
 
+    // Buat filter sesuai dengan type (movie atau tv)
+    // Untuk TV, harus mempertimbangkan season dan episode
     const filter = {
       user: req.user.userId,
       contentId,
-      // type,
-      // ...(type === "tv" && { season, episode }),
+      type,
+      ...(type === "tv" && { season, episode }), // Tambahkan season dan episode ke filter jika typenya tv
     };
+
     console.log("filter", filter);
 
     // Hitung progress
@@ -161,8 +197,6 @@ router.post("/", auth, async (req, res) => {
       watchEntry.durationWatched = durationWatched;
       watchEntry.progressPercentage = progressPercentage;
       watchEntry.watchedDate = new Date();
-      watchEntry.season = season;
-      watchEntry.episode = episode;
 
       console.log("watchEntry", watchEntry);
 
@@ -173,8 +207,7 @@ router.post("/", auth, async (req, res) => {
         user: req.user.userId,
         contentId,
         type,
-        season,
-        episode,
+        ...(type === "tv" && { season, episode }), // Hanya tambahkan untuk TV
         title,
         poster,
         backdrop_path,
@@ -400,35 +433,75 @@ router.get("/progress/:movieId", auth, async (req, res) => {
 });
 
 // Get TV show progress
-router.get(
-  "/tv/:contentId/season/:season/episode/:episode",
-  auth,
-  async (req, res) => {
-    try {
-      const entry = await RecentlyWatched.findOne({
-        user: req.user.userId,
-        type: "tv",
-        contentId: Number(req.params.contentId),
-        season: Number(req.params.season),
-        episode: Number(req.params.episode),
-      });
+router.get("/tv-progress/:contentId", auth, async (req, res) => {
+  try {
+    const contentId = Number(req.params.contentId);
 
-      if (!entry) {
-        return res.json({
-          progressPercentage: 0,
-          durationWatched: 0,
-          totalDuration: 0,
-        });
-      }
+    // Find all episodes watched for this TV show
+    const episodes = await RecentlyWatched.find({
+      user: req.user.userId,
+      type: "tv",
+      contentId: contentId,
+    })
+      .sort({ season: 1, episode: 1 })
+      .lean();
 
-      res.json({
-        progressPercentage: entry.progressPercentage,
-        durationWatched: entry.durationWatched,
-        totalDuration: entry.totalDuration,
+    if (episodes.length === 0) {
+      return res.json({
+        contentId,
+        userId: req.user.userId,
+        episodes: [],
+        totalEpisodesWatched: 0,
+        hasWatchedEpisodes: false,
       });
-    } catch (error) {
-      res.status(500).json({ message: "Server error" });
     }
+
+    // Format the response to include progress for each episode
+    const formattedEpisodes = episodes.map((item) => ({
+      season: item.season,
+      episode: item.episode,
+      title: item.title,
+      durationWatched: item.durationWatched,
+      totalDuration: item.totalDuration,
+      progressPercentage: item.progressPercentage,
+      isCompleted: item.progressPercentage >= 90,
+      watchedDate: item.watchedDate,
+    }));
+
+    // Calculate the overall progress stats
+    const totalWatchTime = episodes.reduce(
+      (sum, ep) => sum + ep.durationWatched,
+      0
+    );
+    const totalDuration = episodes.reduce(
+      (sum, ep) => sum + ep.totalDuration,
+      0
+    );
+    const completedEpisodes = episodes.filter(
+      (ep) => ep.progressPercentage >= 90
+    ).length;
+
+    res.json({
+      contentId,
+      userId: req.user.userId,
+      title: episodes[0].title, // Title of the TV show
+      posterPath: episodes[0].poster,
+      backdropPath: episodes[0].backdrop_path,
+      episodes: formattedEpisodes,
+      totalEpisodesWatched: episodes.length,
+      completedEpisodes: completedEpisodes,
+      totalWatchTime: totalWatchTime,
+      overallProgress:
+        totalDuration > 0
+          ? ((totalWatchTime / totalDuration) * 100).toFixed(1)
+          : 0,
+      hasWatchedEpisodes: true,
+      genres: episodes[0].genres,
+    });
+  } catch (error) {
+    console.error("Error retrieving TV progress:", error);
+    res.status(500).json({ message: "Server error" });
   }
-);
+});
+
 module.exports = router;
