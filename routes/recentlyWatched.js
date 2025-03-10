@@ -504,4 +504,40 @@ router.get("/tv-progress/:contentId", auth, async (req, res) => {
   }
 });
 
+// get tv show progress by episode and season
+router.get("tv/238680/season/:s/episode/:ep", auth, async (req, res) => {
+  try {
+    const contentId = Number(req.params.contentId);
+    const season = Number(req.params.s);
+    const episode = Number(req.params.ep);
+
+    const episodeProgress = await RecentlyWatched.findOne({
+      user: req.user.userId,
+      type: "tv",
+      contentId: contentId,
+      season: season,
+      episode: episode,
+    });
+
+    if (!episodeProgress) {
+      return res.json({
+        contentId,
+        userId: req.user.userId,
+        season: season,
+        episode: episode,
+        title: "",
+        durationWatched: 0,
+        totalDuration: 0,
+        progressPercentage: 0,
+        isCompleted: false,
+      });
+    }
+
+    res.json(episodeProgress);
+  } catch (error) {
+    console.error("Error retrieving episode progress:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
 module.exports = router;
