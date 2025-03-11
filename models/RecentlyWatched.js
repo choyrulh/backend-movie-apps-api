@@ -18,4 +18,8 @@ const recentlyWatchedSchema = new mongoose.Schema({
   genres: [{ type: String }],
 });
 
+// improvement performance
+recentlyWatchedSchema.index({ user: 1, watchedDate: 1 });
+recentlyWatchedSchema.index({ user: 1, contentId: 1 });
+
 module.exports = mongoose.model("recentlywatcheds", recentlyWatchedSchema);
