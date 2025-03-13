@@ -186,6 +186,7 @@ router.get("/", auth, async (req, res) => {
             $dateToString: {
               format: "%d %b %Y, %H:%M",
               date: "$watchedDate",
+              timezone: "Asia/Jakarta",
             },
           },
         },
