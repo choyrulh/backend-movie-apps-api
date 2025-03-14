@@ -1,12 +1,7 @@
 const express = require("express");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
-const authMiddleware = require("../middleware/auth");
-const authController = require("../controllers/authController");
-const bcrypt = require("bcryptjs");
 const { body, validationResult } = require("express-validator");
-const auth = require("../middleware/auth.middleware");
-const cookie = require("cookie");
 
 // router.use(authMiddleware);
 const router = express.Router();
@@ -22,7 +17,7 @@ const cookieOptions = {
 // Helper untuk membuat token
 const createToken = (userId) => {
   return jwt.sign({ userId }, process.env.JWT_SECRET, {
-    expiresIn: "24h",
+    expiresIn: "168h", // 1 minggu
   });
 };
 
@@ -103,16 +98,7 @@ router.post(
       }
 
       console.error("Registration Error:", error);
-      res.status(500).json({
-        status: "error",
-        message: "Internal server error",
-        errors: [
-          {
-            field: null,
-            message: "Something went wrong, please try again later",
-          },
-        ],
-      });
+      sendErrorResponse(res, 500, "Registration failed");
     }
   }
 );
