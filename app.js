@@ -13,6 +13,7 @@ const morgan = require("morgan");
 const helmet = require("helmet");
 const xss = require("xss-clean");
 const app = express();
+const logRoutes = require("./routes/log");
 
 // Middleware
 app.use(cors());
@@ -65,6 +66,7 @@ app.use("/api/stats", statsRoutes);
 app.use("/api/favorites", favoriteRoutes);
 app.use("/api/watchlist", watchlistRoutes);
 app.use("/api/statistics", statisticsRoutes);
+app.use("/api/logs", logRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
