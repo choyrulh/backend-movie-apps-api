@@ -6,6 +6,7 @@ const AccessLog = require("../models/accessLog.model");
 
 // Jika kamu pakai Node.js >=18, fetch sudah langsung tersedia, jadi tidak perlu import apa-apa.
 
+
 router.post("/", async (req, res) => {
   try {
     const userAgent = req.headers["user-agent"];
