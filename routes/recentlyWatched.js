@@ -230,7 +230,7 @@ router.post("/", auth, async (req, res) => {
 router.delete("/:id", auth, async (req, res) => {
   try {
     await RecentlyWatched.findOneAndDelete({
-      _id: req.params.id,
+      contentId: req.params.contentId,
       user: req.user.userId,
     });
     res.json({ message: "Watch history entry deleted" });
