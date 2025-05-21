@@ -229,12 +229,31 @@ router.post("/", auth, async (req, res) => {
 // Delete specific watch history entry
 router.delete("/:id", auth, async (req, res) => {
   try {
-    await RecentlyWatched.findOneAndDelete({
-      contentId: req.params.contentId,
+    // Cari entri yang akan dihapus untuk mendapatkan informasinya
+    const entry = await RecentlyWatched.findOne({
+      _id: req.params.id,
       user: req.user.userId,
     });
-    res.json({ message: "Watch history entry deleted" });
+
+    if (!entry) {
+      return res.status(404).json({ message: "Entry not found" });
+    }
+
+    if (entry.type === "tv") {
+      // Jika tipe adalah TV, hapus semua episode dengan contentId yang sama
+      await RecentlyWatched.deleteMany({
+        user: req.user.userId,
+        contentId: entry.contentId,
+        type: "tv",
+      });
+    } else {
+      // Jika tipe adalah movie, hapus seperti biasa
+      await RecentlyWatched.findByIdAndDelete(req.params.id);
+    }
+
+    res.json({ message: "Watch history entry/entries deleted" });
   } catch (error) {
+    console.error(error);
     res.status(500).json({ message: "Server error" });
   }
 });
