@@ -73,50 +73,59 @@ const WatchHistory = require("../models/RecentlyWatched");
 // });
 
 // Get watch history
-// Get watch history
+// ==========================================
+// 1. GET ALL HISTORY (Dirapikan)
+// ==========================================
 router.get("/", auth, async (req, res) => {
   try {
-    // First, get all watch history entries
+    // Ambil semua history user, urutkan dari yang terbaru
     const allHistory = await RecentlyWatched.find({
       user: req.user.userId,
     }).sort({
-      watchedDate: -1, // Sort by most recently watched
-    });
+      watchedDate: -1,
+    }).lean(); // Gunakan .lean() untuk performa lebih cepat
 
-    // Create a map to track the most recent entry for each unique contentId
-    // For TV shows, we'll only keep the most recent episode
+    // Map untuk menyaring duplikat konten (hanya tampilkan episode/movie terakhir ditonton)
     const uniqueContentMap = new Map();
 
-    // Process each history item
     allHistory.forEach((item) => {
       const key = item.contentId.toString();
 
-      // For movies, or if this contentId hasn't been seen before, add it to the map
-      if (item.type === "movie" || !uniqueContentMap.has(key)) {
-        uniqueContentMap.set(key, item);
+      // Jika Movie: langsung simpan (atau replace jika ada duplikat teknis, ambil yang terbaru)
+      if (item.type === "movie") {
+        if (!uniqueContentMap.has(key)) {
+            uniqueContentMap.set(key, item);
+        }
       }
-      // For TV shows, only replace if this episode is more recently watched
+      // Jika TV: Kita ingin menampilkan series tersebut di list, 
+      // diwakili oleh episode TERAKHIR yang ditonton.
       else if (item.type === "tv") {
         const existingItem = uniqueContentMap.get(key);
-        if (new Date(item.watchedDate) > new Date(existingItem.watchedDate)) {
+        
+        // Jika belum ada di map, masukkan
+        if (!existingItem) {
+          uniqueContentMap.set(key, item);
+        } 
+        // Jika sudah ada, bandingkan tanggal watchedDate
+        else if (new Date(item.watchedDate) > new Date(existingItem.watchedDate)) {
           uniqueContentMap.set(key, item);
         }
       }
     });
 
-    // Convert map values to array
-    const history = Array.from(uniqueContentMap.values());
+    // Konversi Map kembali ke Array dan urutkan ulang berdasarkan tanggal
+    const history = Array.from(uniqueContentMap.values())
+      .sort((a, b) => new Date(b.watchedDate) - new Date(a.watchedDate));
 
-    // Sort by watchedDate to maintain chronological order
-    history.sort((a, b) => new Date(b.watchedDate) - new Date(a.watchedDate));
-
-    // Calculate progressPercentage for each item
+    // Hitung persentase final untuk display
     const updatedHistory = history.map((item) => {
-      const progressPercentage =
-        (item.durationWatched / item.totalDuration) * 100;
+      // Fallback jika totalDuration 0 untuk menghindari NaN/Infinity
+      const safeDuration = item.totalDuration || 1; 
+      const progressPercentage = (item.durationWatched / safeDuration) * 100;
+      
       return {
-        ...item._doc, // Using _doc to get mongoose document data
-        progressPercentage: Math.min(progressPercentage, 100).toFixed(1), // Ensure progress doesn't exceed 100%
+        ...item,
+        progressPercentage: Math.min(progressPercentage, 100).toFixed(1),
       };
     });
 
@@ -133,7 +142,9 @@ router.get("/", auth, async (req, res) => {
 });
 
 // Add to watch history
-// Add to watch history
+// ==========================================
+// 2. ADD/UPDATE WATCH HISTORY (UTAMA)
+// ==========================================
 router.post("/", auth, async (req, res) => {
   try {
     const {
@@ -149,87 +160,90 @@ router.post("/", auth, async (req, res) => {
       genres,
     } = req.body;
 
+    // 1. Validasi Dasar
     if (!contentId || !type) {
       return res.status(400).json({ message: "contentId dan type diperlukan" });
     }
 
-    if (type === "tv" && (!season || !episode)) {
-      return res
-        .status(400)
-        .json({ message: "Season dan episode diperlukan untuk TV" });
+    if (type === "tv" && (season === undefined || episode === undefined)) {
+      return res.status(400).json({ message: "Season dan episode diperlukan untuk TV" });
     }
 
-    // Pastikan totalDuration tidak nol untuk menghindari NaN
-    if (!totalDuration || totalDuration <= 0) {
-      return res
-        .status(400)
-        .json({ message: "Durasi total harus lebih dari 0" });
+    // 2. Normalisasi Data (PENTING: Frontend iframe sering mengirim string)
+    const normalizedContentId = Number(contentId);
+    const normalizedSeason = type === 'tv' ? Number(season) : null;
+    const normalizedEpisode = type === 'tv' ? Number(episode) : null;
+    
+    // Pastikan angka valid untuk durasi
+    const watchedVal = parseFloat(durationWatched || 0);
+    const durationVal = parseFloat(totalDuration || 0);
+
+    // Hitung persentase di backend agar konsisten
+    let progressPercentage = 0;
+    if (durationVal > 0) {
+      progressPercentage = (watchedVal / durationVal) * 100;
+      // Cap di 100% dan 0%
+      progressPercentage = Math.min(Math.max(progressPercentage, 0), 100).toFixed(2);
     }
 
-    // Buat filter sesuai dengan type (movie atau tv)
-    // Untuk TV, harus mempertimbangkan season dan episode
+    // 3. Buat Filter Pencarian
     const filter = {
       user: req.user.userId,
-      contentId,
+      contentId: normalizedContentId,
       type,
-      ...(type === "tv" && { season, episode }), // Tambahkan season dan episode ke filter jika typenya tv
     };
 
-    console.log("filter", filter);
-
-    // Hitung progress
-    const progressPercentage = (
-      (durationWatched / totalDuration) *
-      100
-    ).toFixed(1);
-
-    // Cari data yang sudah ada
-    let watchEntry = await RecentlyWatched.findOne(filter);
-    console.log("watchEntry", watchEntry);
-
-    if (watchEntry) {
-      // Update data yang sudah ada
-      watchEntry.title = title;
-      watchEntry.poster = poster;
-      watchEntry.backdrop_path = backdrop_path;
-      watchEntry.totalDuration = totalDuration;
-      watchEntry.genres = genres;
-      watchEntry.durationWatched = durationWatched;
-      watchEntry.progressPercentage = progressPercentage;
-      watchEntry.watchedDate = new Date();
-
-      console.log("watchEntry", watchEntry);
-
-      await watchEntry.save();
-    } else {
-      // Buat entri baru jika tidak ditemukan
-      watchEntry = await RecentlyWatched.create({
-        user: req.user.userId,
-        contentId,
-        type,
-        ...(type === "tv" && { season, episode }), // Hanya tambahkan untuk TV
-        title,
-        poster,
-        backdrop_path,
-        totalDuration,
-        genres,
-        durationWatched,
-        progressPercentage,
-        watchedDate: new Date(),
-      });
+    // Jika TV, filter harus spesifik ke episode tersebut
+    if (type === "tv") {
+      filter.season = normalizedSeason;
+      filter.episode = normalizedEpisode;
     }
 
-    res.status(201).json(watchEntry);
+    // 4. Data yang akan di-update atau di-insert
+    const updateData = {
+      $set: {
+        title,
+        poster, // Pastikan field ini match dengan frontend (poster vs poster_path)
+        backdrop_path,
+        genres,
+        totalDuration: durationVal,
+        durationWatched: watchedVal,
+        progressPercentage: Number(progressPercentage),
+        watchedDate: new Date(), // Selalu update waktu tonton ke sekarang
+      },
+      // $setOnInsert bisa digunakan jika ada field yang hanya ingin diset saat create baru
+    };
+
+    // 5. Eksekusi Atomic Update (Upsert)
+    // findOneAndUpdate dengan option upsert: true akan mengupdate jika ada, atau membuat baru jika tidak ada.
+    // Ini mencegah race condition saat request dikirim cepat berulang kali.
+    const watchEntry = await RecentlyWatched.findOneAndUpdate(
+      filter, 
+      updateData, 
+      { 
+        new: true, // Kembalikan data setelah diupdate
+        upsert: true, // Buat baru jika tidak ditemukan
+        setDefaultsOnInsert: true // Jalankan default value schema
+      }
+    );
+
+    res.status(200).json(watchEntry);
+
   } catch (error) {
-    console.error("Error:", error);
+    console.error("Error saving watch history:", error);
+    // Cek duplikasi key error mongo (jarang terjadi dengan logika upsert, tapi jaga-jaga)
+    if (error.code === 11000) {
+       return res.status(409).json({ message: "Duplicate entry detected" });
+    }
     res.status(500).json({ message: "Server error" });
   }
 });
 
-// Delete specific watch history entry
+// ==========================================
+// 3. DELETE SPECIFIC ENTRY
+// ==========================================
 router.delete("/:id", auth, async (req, res) => {
   try {
-    // Cari entri yang akan dihapus untuk mendapatkan informasinya
     const entry = await RecentlyWatched.findOne({
       _id: req.params.id,
       user: req.user.userId,
@@ -239,26 +253,29 @@ router.delete("/:id", auth, async (req, res) => {
       return res.status(404).json({ message: "Entry not found" });
     }
 
+    // Logic Hapus:
+    // Jika User menghapus item dari list "Recently Watched" (misal: Series The Boys),
+    // Biasanya user berekspektasi SELURUH progress series itu hilang, bukan cuma episode terakhirnya.
     if (entry.type === "tv") {
-      // Jika tipe adalah TV, hapus semua episode dengan contentId yang sama
       await RecentlyWatched.deleteMany({
         user: req.user.userId,
         contentId: entry.contentId,
         type: "tv",
       });
     } else {
-      // Jika tipe adalah movie, hapus seperti biasa
       await RecentlyWatched.findByIdAndDelete(req.params.id);
     }
 
-    res.json({ message: "Watch history entry/entries deleted" });
+    res.json({ message: "Watch history entry removed" });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Server error" });
   }
 });
 
-// Clear all watch history
+// ==========================================
+// 4. CLEAR ALL HISTORY
+// ==========================================
 router.delete("/", auth, async (req, res) => {
   try {
     await RecentlyWatched.deleteMany({ user: req.user.userId });
@@ -451,12 +468,13 @@ router.get("/progress/:movieId", auth, async (req, res) => {
   });
 });
 
-// Get TV show progress
+// ==========================================
+// 7. GET TV SHOW OVERVIEW (Progress per Season/Episode)
+// ==========================================
 router.get("/tv-progress/:contentId", auth, async (req, res) => {
   try {
     const contentId = Number(req.params.contentId);
 
-    // Find all episodes watched for this TV show
     const episodes = await RecentlyWatched.find({
       user: req.user.userId,
       type: "tv",
@@ -468,14 +486,12 @@ router.get("/tv-progress/:contentId", auth, async (req, res) => {
     if (episodes.length === 0) {
       return res.json({
         contentId,
-        userId: req.user.userId,
         episodes: [],
         totalEpisodesWatched: 0,
         hasWatchedEpisodes: false,
       });
     }
 
-    // Format the response to include progress for each episode
     const formattedEpisodes = episodes.map((item) => ({
       season: item.season,
       episode: item.episode,
@@ -487,35 +503,14 @@ router.get("/tv-progress/:contentId", auth, async (req, res) => {
       watchedDate: item.watchedDate,
     }));
 
-    // Calculate the overall progress stats
-    const totalWatchTime = episodes.reduce(
-      (sum, ep) => sum + ep.durationWatched,
-      0
-    );
-    const totalDuration = episodes.reduce(
-      (sum, ep) => sum + ep.totalDuration,
-      0
-    );
-    const completedEpisodes = episodes.filter(
-      (ep) => ep.progressPercentage >= 90
-    ).length;
-
     res.json({
       contentId,
       userId: req.user.userId,
-      title: episodes[0].title, // Title of the TV show
+      title: episodes[0].title,
       posterPath: episodes[0].poster,
-      backdropPath: episodes[0].backdrop_path,
       episodes: formattedEpisodes,
       totalEpisodesWatched: episodes.length,
-      completedEpisodes: completedEpisodes,
-      totalWatchTime: totalWatchTime,
-      overallProgress:
-        totalDuration > 0
-          ? ((totalWatchTime / totalDuration) * 100).toFixed(1)
-          : 0,
       hasWatchedEpisodes: true,
-      genres: episodes[0].genres,
     });
   } catch (error) {
     console.error("Error retrieving TV progress:", error);
@@ -523,7 +518,9 @@ router.get("/tv-progress/:contentId", auth, async (req, res) => {
   }
 });
 
-// get tv show progress by episode and season
+// ==========================================
+// 6. CHECK PROGRESS SPECIFIC EPISODE (PENTING untuk Resume Playback)
+// ==========================================
 router.get("/tv/:contentId/season/:s/episode/:ep", auth, async (req, res) => {
   try {
     const contentId = Number(req.params.contentId);
@@ -539,20 +536,24 @@ router.get("/tv/:contentId/season/:s/episode/:ep", auth, async (req, res) => {
     });
 
     if (!episodeProgress) {
+      // Return objek kosong dengan struktur yang diharapkan frontend
+      // agar tidak error saat mengakses property .watched dll
       return res.json({
         contentId,
         userId: req.user.userId,
-        season: season,
-        episode: episode,
-        title: "",
+        season,
+        episode,
+        watched: 0, // frontend menggunakan field 'watched' di beberapa tempat
         durationWatched: 0,
         totalDuration: 0,
         progressPercentage: 0,
-        isCompleted: false,
       });
     }
 
-    res.json(episodeProgress);
+    res.json({
+        ...episodeProgress.toObject(),
+        watched: episodeProgress.durationWatched // Alias untuk kompatibilitas
+    });
   } catch (error) {
     console.error("Error retrieving episode progress:", error);
     res.status(500).json({ message: "Server error" });

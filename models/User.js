@@ -5,16 +5,32 @@ const userSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
   name: { type: String, required: true },
+  // Detailed Preferences
   preferences: {
-    favoriteGenres: [String],
-    language: String,
-    maturityRating: String,
+    // Content
+    favoriteGenres: [String], // Simpan nama genre, bukan ID, agar lebih mudah dibaca
+    maturityRating: { type: String, default: "Semua Umur" },
+    
+    // Display & Language
+    subtitleLanguage: String, // Tambahkan ini
+    subtitleLanguage: { type: String, default: "Bahasa Indonesia" },
+    darkMode: { type: Boolean, default: true },
+    autoplay: { type: Boolean, default: true },
+    
+    // Notifications
+    notifications: {
+      email: { type: Boolean, default: true },
+      push: { type: Boolean, default: true },
+      newReleases: { type: Boolean, default: true },
+      recommendations: { type: Boolean, default: true },
+    },
   },
   favoriteMovies: [{ type: Number }],
   watchlist: [{ type: Number }],
   profile: {
     avatar: String,
     bio: String,
+    phone: String, // Tambahan
     location: String,
     birthDate: Date,
   },

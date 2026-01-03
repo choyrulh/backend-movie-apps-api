@@ -8,6 +8,7 @@ const accessLogSchema = new mongoose.Schema({
   country: String,
   region: String,
   city: String,
+  org: String,
   timestamp: { type: Date, default: Date.now },
 });
 
