@@ -10,13 +10,12 @@ const userSchema = new mongoose.Schema({
     // Content
     favoriteGenres: [String], // Simpan nama genre, bukan ID, agar lebih mudah dibaca
     maturityRating: { type: String, default: "Semua Umur" },
-    
+
     // Display & Language
-    subtitleLanguage: String, // Tambahkan ini
     subtitleLanguage: { type: String, default: "Bahasa Indonesia" },
     darkMode: { type: Boolean, default: true },
     autoplay: { type: Boolean, default: true },
-    
+
     // Notifications
     notifications: {
       email: { type: Boolean, default: true },

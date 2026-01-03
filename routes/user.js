@@ -1,9 +1,8 @@
 const router = require("express").Router();
-const authMiddleware = require("../middleware/auth");
-const User = require("../models/User");
 const auth = require("../middleware/auth.middleware");
+const User = require("../models/User");
 
-router.use(authMiddleware);
+// router.use(authMiddleware); // Removed explicitly to use specific middleware
 
 // Get user profile
 router.get("/profile", auth, async (req, res) => {
@@ -34,27 +33,43 @@ router.put("/profile", auth, async (req, res) => {
     // Profile fields (Nested)
     if (profile) {
       if (profile.bio !== undefined) updateData["profile.bio"] = profile.bio;
-      if (profile.avatar !== undefined) updateData["profile.avatar"] = profile.avatar;
-      if (profile.phone !== undefined) updateData["profile.phone"] = profile.phone;
-      if (profile.location !== undefined) updateData["profile.location"] = profile.location;
+      if (profile.avatar !== undefined)
+        updateData["profile.avatar"] = profile.avatar;
+      if (profile.phone !== undefined)
+        updateData["profile.phone"] = profile.phone;
+      if (profile.location !== undefined)
+        updateData["profile.location"] = profile.location;
     }
 
     // Preferences fields (Nested)
     if (preferences) {
-      if (preferences.favoriteGenres) updateData["preferences.favoriteGenres"] = preferences.favoriteGenres;
-      if (preferences.maturityRating) updateData["preferences.maturityRating"] = preferences.maturityRating;
-      if (preferences.language) updateData["preferences.language"] = preferences.language;
-      if (preferences.subtitleLanguage) updateData["preferences.subtitleLanguage"] = preferences.subtitleLanguage;
-      if (preferences.darkMode !== undefined) updateData["preferences.darkMode"] = preferences.darkMode;
-      if (preferences.autoplay !== undefined) updateData["preferences.autoplay"] = preferences.autoplay;
+      if (preferences.favoriteGenres)
+        updateData["preferences.favoriteGenres"] = preferences.favoriteGenres;
+      if (preferences.maturityRating)
+        updateData["preferences.maturityRating"] = preferences.maturityRating;
+      if (preferences.language)
+        updateData["preferences.language"] = preferences.language;
+      if (preferences.subtitleLanguage)
+        updateData["preferences.subtitleLanguage"] =
+          preferences.subtitleLanguage;
+      if (preferences.darkMode !== undefined)
+        updateData["preferences.darkMode"] = preferences.darkMode;
+      if (preferences.autoplay !== undefined)
+        updateData["preferences.autoplay"] = preferences.autoplay;
 
       // Notifications (Double Nested)
       if (preferences.notifications) {
         const notes = preferences.notifications;
-        if (notes.email !== undefined) updateData["preferences.notifications.email"] = notes.email;
-        if (notes.push !== undefined) updateData["preferences.notifications.push"] = notes.push;
-        if (notes.newReleases !== undefined) updateData["preferences.notifications.newReleases"] = notes.newReleases;
-        if (notes.recommendations !== undefined) updateData["preferences.notifications.recommendations"] = notes.recommendations;
+        if (notes.email !== undefined)
+          updateData["preferences.notifications.email"] = notes.email;
+        if (notes.push !== undefined)
+          updateData["preferences.notifications.push"] = notes.push;
+        if (notes.newReleases !== undefined)
+          updateData["preferences.notifications.newReleases"] =
+            notes.newReleases;
+        if (notes.recommendations !== undefined)
+          updateData["preferences.notifications.recommendations"] =
+            notes.recommendations;
       }
     }
 
@@ -75,7 +90,9 @@ router.put("/profile", auth, async (req, res) => {
     });
   } catch (error) {
     console.error("Update Profile Error:", error);
-    res.status(500).json({ message: "Gagal memperbarui profil", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Gagal memperbarui profil", error: error.message });
   }
 });
 

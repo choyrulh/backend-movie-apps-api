@@ -1,9 +1,7 @@
 const router = require("express").Router();
-const authMiddleware = require("../middleware/auth"); // Tambahkan ini
 const RecentlyWatched = require("../models/RecentlyWatched");
 const auth = require("../middleware/auth.middleware");
 const mongoose = require("mongoose");
-const WatchHistory = require("../models/RecentlyWatched");
 
 // Tambahkan middleware auth untuk semua route
 // router.use(authMiddleware);
@@ -81,9 +79,11 @@ router.get("/", auth, async (req, res) => {
     // Ambil semua history user, urutkan dari yang terbaru
     const allHistory = await RecentlyWatched.find({
       user: req.user.userId,
-    }).sort({
-      watchedDate: -1,
-    }).lean(); // Gunakan .lean() untuk performa lebih cepat
+    })
+      .sort({
+        watchedDate: -1,
+      })
+      .lean(); // Gunakan .lean() untuk performa lebih cepat
 
     // Map untuk menyaring duplikat konten (hanya tampilkan episode/movie terakhir ditonton)
     const uniqueContentMap = new Map();
@@ -94,35 +94,38 @@ router.get("/", auth, async (req, res) => {
       // Jika Movie: langsung simpan (atau replace jika ada duplikat teknis, ambil yang terbaru)
       if (item.type === "movie") {
         if (!uniqueContentMap.has(key)) {
-            uniqueContentMap.set(key, item);
+          uniqueContentMap.set(key, item);
         }
       }
-      // Jika TV: Kita ingin menampilkan series tersebut di list, 
+      // Jika TV: Kita ingin menampilkan series tersebut di list,
       // diwakili oleh episode TERAKHIR yang ditonton.
       else if (item.type === "tv") {
         const existingItem = uniqueContentMap.get(key);
-        
+
         // Jika belum ada di map, masukkan
         if (!existingItem) {
           uniqueContentMap.set(key, item);
-        } 
+        }
         // Jika sudah ada, bandingkan tanggal watchedDate
-        else if (new Date(item.watchedDate) > new Date(existingItem.watchedDate)) {
+        else if (
+          new Date(item.watchedDate) > new Date(existingItem.watchedDate)
+        ) {
           uniqueContentMap.set(key, item);
         }
       }
     });
 
     // Konversi Map kembali ke Array dan urutkan ulang berdasarkan tanggal
-    const history = Array.from(uniqueContentMap.values())
-      .sort((a, b) => new Date(b.watchedDate) - new Date(a.watchedDate));
+    const history = Array.from(uniqueContentMap.values()).sort(
+      (a, b) => new Date(b.watchedDate) - new Date(a.watchedDate)
+    );
 
     // Hitung persentase final untuk display
     const updatedHistory = history.map((item) => {
       // Fallback jika totalDuration 0 untuk menghindari NaN/Infinity
-      const safeDuration = item.totalDuration || 1; 
+      const safeDuration = item.totalDuration || 1;
       const progressPercentage = (item.durationWatched / safeDuration) * 100;
-      
+
       return {
         ...item,
         progressPercentage: Math.min(progressPercentage, 100).toFixed(1),
@@ -166,14 +169,16 @@ router.post("/", auth, async (req, res) => {
     }
 
     if (type === "tv" && (season === undefined || episode === undefined)) {
-      return res.status(400).json({ message: "Season dan episode diperlukan untuk TV" });
+      return res
+        .status(400)
+        .json({ message: "Season dan episode diperlukan untuk TV" });
     }
 
     // 2. Normalisasi Data (PENTING: Frontend iframe sering mengirim string)
     const normalizedContentId = Number(contentId);
-    const normalizedSeason = type === 'tv' ? Number(season) : null;
-    const normalizedEpisode = type === 'tv' ? Number(episode) : null;
-    
+    const normalizedSeason = type === "tv" ? Number(season) : null;
+    const normalizedEpisode = type === "tv" ? Number(episode) : null;
+
     // Pastikan angka valid untuk durasi
     const watchedVal = parseFloat(durationWatched || 0);
     const durationVal = parseFloat(totalDuration || 0);
@@ -183,7 +188,10 @@ router.post("/", auth, async (req, res) => {
     if (durationVal > 0) {
       progressPercentage = (watchedVal / durationVal) * 100;
       // Cap di 100% dan 0%
-      progressPercentage = Math.min(Math.max(progressPercentage, 0), 100).toFixed(2);
+      progressPercentage = Math.min(
+        Math.max(progressPercentage, 0),
+        100
+      ).toFixed(2);
     }
 
     // 3. Buat Filter Pencarian
@@ -218,22 +226,21 @@ router.post("/", auth, async (req, res) => {
     // findOneAndUpdate dengan option upsert: true akan mengupdate jika ada, atau membuat baru jika tidak ada.
     // Ini mencegah race condition saat request dikirim cepat berulang kali.
     const watchEntry = await RecentlyWatched.findOneAndUpdate(
-      filter, 
-      updateData, 
-      { 
+      filter,
+      updateData,
+      {
         new: true, // Kembalikan data setelah diupdate
         upsert: true, // Buat baru jika tidak ditemukan
-        setDefaultsOnInsert: true // Jalankan default value schema
+        setDefaultsOnInsert: true, // Jalankan default value schema
       }
     );
 
     res.status(200).json(watchEntry);
-
   } catch (error) {
     console.error("Error saving watch history:", error);
     // Cek duplikasi key error mongo (jarang terjadi dengan logika upsert, tapi jaga-jaga)
     if (error.code === 11000) {
-       return res.status(409).json({ message: "Duplicate entry detected" });
+      return res.status(409).json({ message: "Duplicate entry detected" });
     }
     res.status(500).json({ message: "Server error" });
   }
@@ -551,8 +558,8 @@ router.get("/tv/:contentId/season/:s/episode/:ep", auth, async (req, res) => {
     }
 
     res.json({
-        ...episodeProgress.toObject(),
-        watched: episodeProgress.durationWatched // Alias untuk kompatibilitas
+      ...episodeProgress.toObject(),
+      watched: episodeProgress.durationWatched, // Alias untuk kompatibilitas
     });
   } catch (error) {
     console.error("Error retrieving episode progress:", error);

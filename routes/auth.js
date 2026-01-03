@@ -2,7 +2,7 @@ const express = require("express");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const { body, validationResult } = require("express-validator");
-const authMiddleware = require("../middleware/auth.Middleware")
+const authMiddleware = require("../middleware/auth.middleware");
 
 // router.use(authMiddleware);
 const router = express.Router();
@@ -192,16 +192,15 @@ router.post("/logout", (req, res) => {
   }
 });
 
-router.put("/change-password",authMiddleware, async (req, res) => {
+router.put("/change-password", authMiddleware, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
     if (!currentPassword || !newPassword) {
-  return res.status(400).json({
-    message: "currentPassword dan newPassword wajib diisi",
-  });
-}
+      return res.status(400).json({
+        message: "currentPassword dan newPassword wajib diisi",
+      });
+    }
 
-    
     const user = await User.findById(req.user.userId);
     if (!user) return res.status(404).json({ message: "User not found" });
 
@@ -217,7 +216,7 @@ router.put("/change-password",authMiddleware, async (req, res) => {
 
     res.json({ status: "success", message: "Password berhasil diubah" });
   } catch (error) {
-    console.log("error: ", error)
+    console.log("error: ", error);
     res.status(500).json({ message: "Server error" });
   }
 });
