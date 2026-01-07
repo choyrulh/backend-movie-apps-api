@@ -2,6 +2,8 @@ require("dotenv").config();
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
+const rateLimit = require("express-rate-limit");
+const mongoSanitize = require("express-mongo-sanitize");
 const authRoutes = require("./routes/auth");
 const recentlyWatchedRoutes = require("./routes/recentlyWatched");
 const userRoutes = require("./routes/user");
@@ -16,12 +18,28 @@ const app = express();
 const logRoutes = require("./routes/log");
 
 // Middleware
-app.use(cors());
 app.use(express.json());
 
 // Global Middleware
 // Set security HTTP headers
 app.use(helmet());
+
+app.use(mongoSanitize());
+const limiter = rateLimit({
+  max: 100, // Maksimal 100 request
+  windowMs: 60 * 60 * 1000, // Per 1 jam (dalam milidetik)
+  message: "Terlalu banyak request dari IP ini, silakan coba lagi dalam satu jam!",
+  standardHeaders: true, // Sertakan info rate limit di header `RateLimit-*`
+  legacyHeaders: false, // Matikan header `X-RateLimit-*` yang lama
+});
+app.use("/api", limiter);
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+});
+
+app.use("/api/auth", authLimiter);
 
 // Dev logging
 if (process.env.NODE_ENV === "development") {
@@ -31,8 +49,8 @@ if (process.env.NODE_ENV === "development") {
 }
 
 // Body Parser Middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+app.use(express.json({ limit: "10kb" }));
+app.use(express.urlencoded({ extended: false, limit: "10kb" }));
 
 // Data sanitization against XSS
 app.use(xss());
@@ -41,7 +59,7 @@ app.use(
   cors({
     origin: [
       "http://localhost:3000",
-      "https://movie-apps-with-next15.vercel.app/",
+      "https://movie-apps-with-next15.vercel.app",
     ],
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE"],
@@ -71,7 +89,7 @@ app.use("/api/logs", logRoutes);
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);
-  res.status(500).json({ error: "Something went wrong " + err });
+  res.status(500).json({ error: "Something went wrong "});
 });
 
 // const PORT = process.env.PORT || 3100;
