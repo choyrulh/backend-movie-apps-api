@@ -72,10 +72,13 @@ const mongoose = require("mongoose");
 
 // Get watch history
 // ==========================================
-// 1. GET ALL HISTORY (Dirapikan)
+// 1. GET ALL HISTORY (PAGINATED & GROUPED)
 // ==========================================
 router.get("/", auth, async (req, res) => {
   try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+
     // Ambil semua history user, urutkan dari yang terbaru
     const allHistory = await RecentlyWatched.find({
       user: req.user.userId,
@@ -83,31 +86,23 @@ router.get("/", auth, async (req, res) => {
       .sort({
         watchedDate: -1,
       })
-      .lean(); // Gunakan .lean() untuk performa lebih cepat
+      .lean();
 
-    // Map untuk menyaring duplikat konten (hanya tampilkan episode/movie terakhir ditonton)
+    // Map untuk menyaring duplikat konten (Logic existing tetap dipertahankan)
     const uniqueContentMap = new Map();
 
     allHistory.forEach((item) => {
       const key = item.contentId.toString();
 
-      // Jika Movie: langsung simpan (atau replace jika ada duplikat teknis, ambil yang terbaru)
       if (item.type === "movie") {
         if (!uniqueContentMap.has(key)) {
           uniqueContentMap.set(key, item);
         }
-      }
-      // Jika TV: Kita ingin menampilkan series tersebut di list,
-      // diwakili oleh episode TERAKHIR yang ditonton.
-      else if (item.type === "tv") {
+      } else if (item.type === "tv") {
         const existingItem = uniqueContentMap.get(key);
-
-        // Jika belum ada di map, masukkan
         if (!existingItem) {
           uniqueContentMap.set(key, item);
-        }
-        // Jika sudah ada, bandingkan tanggal watchedDate
-        else if (
+        } else if (
           new Date(item.watchedDate) > new Date(existingItem.watchedDate)
         ) {
           uniqueContentMap.set(key, item);
@@ -115,14 +110,13 @@ router.get("/", auth, async (req, res) => {
       }
     });
 
-    // Konversi Map kembali ke Array dan urutkan ulang berdasarkan tanggal
+    // Array hasil deduplikasi
     const history = Array.from(uniqueContentMap.values()).sort(
       (a, b) => new Date(b.watchedDate) - new Date(a.watchedDate)
     );
 
-    // Hitung persentase final untuk display
-    const updatedHistory = history.map((item) => {
-      // Fallback jika totalDuration 0 untuk menghindari NaN/Infinity
+    // Hitung persentase final
+    const processedHistory = history.map((item) => {
       const safeDuration = item.totalDuration || 1;
       const progressPercentage = (item.durationWatched / safeDuration) * 100;
 
@@ -132,11 +126,25 @@ router.get("/", auth, async (req, res) => {
       };
     });
 
+    // --- IMPLEMENTASI PAGINATION PADA ARRAY HASIL ---
+    const startIndex = (page - 1) * limit;
+    const endIndex = page * limit;
+    
+    const paginatedHistory = processedHistory.slice(startIndex, endIndex);
+    const totalItems = processedHistory.length;
+    const totalPages = Math.ceil(totalItems / limit);
+
     res.json({
       message: "Watch history retrieved",
       status: 200,
-      length: updatedHistory.length,
-      history: updatedHistory,
+      pagination: {
+        page,
+        limit,
+        totalItems,
+        totalPages,
+        hasMore: page < totalPages
+      },
+      history: paginatedHistory,
     });
   } catch (error) {
     console.error("Error retrieving watch history:", error);
