@@ -60,6 +60,7 @@ app.use(
     origin: [
       "http://localhost:3000",
       "https://movie-apps-with-next15.vercel.app",
+      "https://lacak-lokasi.vercel.app/",
     ],
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE"],
